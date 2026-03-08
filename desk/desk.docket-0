@@ -1,0 +1,11 @@
+:~
+  title+'Furum'
+  info+'Decentralized forums for Urbit'
+  color+0xcc.2020
+  image+'/apps/furum/icon'
+  version+[0 1 0]
+  website+'https://github.com/groundwire'
+  license+'MIT'
+  base+'furum'
+  site+/apps/furum
+==
