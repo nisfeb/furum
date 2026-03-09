@@ -115,6 +115,13 @@
   .upload-btn:disabled { background: #999; cursor: default; }
   .upload-status { font-size: 14px; color: #5a7a8a; margin-left: 8px; }
   .upload-err { font-size: 14px; color: #cc2020; margin-left: 8px; }
+  .new-tag { font-size: 11px; color: #fff; background: #cc2020; padding: 1px 6px;
+             border-radius: 3px; margin-left: 6px; font-weight: bold;
+             text-transform: uppercase; vertical-align: middle; }
+  .new-dot { display: inline-block; width: 8px; height: 8px; background: #cc2020;
+             border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .cm-new { background: #fdf5e6; border-left-color: #cc8020; }
+  body.dark .cm-new { background: #1a1808; border-left-color: #cc8020; }
   '''
 ::
 ::  inline JS for S3 image upload (works on submit form and comment forms)
@@ -631,7 +638,7 @@
 ::  HOME PAGE: board directory
 ::
 ++  render-feed
-  |=  [feed=(list [host=@p board-name=board-name =post]) our=@p now=@da dark=? page=@ud]
+  |=  [feed=(list [host=@p board-name=board-name =post]) our=@p now=@da dark=? page=@ud board-seen=(map [@p board-name] @da)]
   ^-  manx
   =/  sorted=(list [host=@p board-name=board-name =post])
     %+  sort  feed
@@ -684,29 +691,37 @@
       ?.  ?&(?=(^ url.post.item) (is-image-url u.url.post.item))
         ;span;
       (image-preview (trip u.url.post.item))
-      ;div.rw
-        ;span.rk: {(a-co:co rank)}.
-        ;div
-          ;span.ti
-            ;+  title-link
-          ==
-          ;+  url-host
-          ;+  img-prev
-          ;div.me
-            ;+  ;/("{(a-co:co points)} pts by {(scow %p author.post.item)} {(time-ago now created.post.item)} to ")
-            ;a(href board-path): {(trip board-name.item)}
-            ;+  ;/(" | ")
-            ;a(href post-href): {(a-co:co comment-count.post.item)} comments
-          ==
+    =/  bls  (~(get by board-seen) [host.item board-name.item])
+    =/  is-new=?
+      ?~  bls  %.n
+      (gth created.post.item u.bls)
+    =/  new-tag=manx
+      ?.  is-new  ;span;
+      ;span.new-tag: new
+    ;div.rw
+      ;span.rk: {(a-co:co rank)}.
+      ;div
+        ;span.ti
+          ;+  title-link
+          ;+  new-tag
+        ==
+        ;+  url-host
+        ;+  img-prev
+        ;div.me
+          ;+  ;/("{(a-co:co points)} pts by {(scow %p author.post.item)} {(time-ago now created.post.item)} to ")
+          ;a(href board-path): {(trip board-name.item)}
+          ;+  ;/(" | ")
+          ;a(href post-href): {(a-co:co comment-count.post.item)} comments
         ==
       ==
+    ==
     $(rem t.rem, idx +(idx), acc [row acc])
   =/  pag-nav=manx  (render-pagination "/apps/furum?" page total)
   %-  page-shell
   :*  'furum'  [nav (weld post-rows ~[pag-nav])]  ~  %.n  dark  ==
 ::
 ++  render-home
-  |=  [entries=(list directory-entry) view=?(%all %curated %tag) active-tag=(unit @tas) all-tags=(set @tas) is-registry=? dark=?]
+  |=  [entries=(list directory-entry) view=?(%all %curated %tag) active-tag=(unit @tas) all-tags=(set @tas) is-registry=? dark=? boards-with-new=(set [@p board-name])]
   ^-  manx
   =/  tag-list=(list @tas)
     %+  sort  ~(tap in all-tags)
@@ -766,9 +781,14 @@
       ?:  curated.entry
         ;span.me: {" "}[curated]
       ;span;
+    =/  new-dot=manx
+      ?.  (~(has in boards-with-new) [host.entry name.entry])
+        ;span;
+      ;span.new-dot;
     ;div.rw
       ;div
         ;span.ti
+          ;+  new-dot
           ;a(href href): {(trip title.entry)}
         ==
         ;span.host: {" "}({(scow %p host.entry)})
@@ -786,6 +806,7 @@
   |=  $:  host=@p  =board-info  posts=(list post)  our=@p  now=@da
           is-mod=?  authed=?  dark=?  sort=?(%hot %new %top)
           is-followed=?  page=@ud  pin-set=(set post-id)
+          board-last-seen=(unit @da)
       ==
   ^-  manx
   =/  pinned-posts=(list post)
@@ -929,12 +950,17 @@
         ;+  ;/(" | ")
         ;button.va(type "submit"): pin
       ==
+    =/  new-tag=manx
+      ?~  board-last-seen  ;span;
+      ?.  (gth created.post u.board-last-seen)  ;span;
+      ;span.new-tag: new
     ;div.rw
       ;span.rk: {(a-co:co rank)}.
       ;+  vote-btn
       ;div
         ;span.ti
           ;+  title-link
+          ;+  new-tag
         ==
         ;+  url-host
         ;+  img-prev
@@ -954,7 +980,7 @@
 ::  POST DETAIL PAGE: post with comments
 ::
 ++  render-post-page
-  |=  [host=@p =board-info =post comments=(map comment-id comment) our=@p now=@da is-mod=? authed=? dark=? pinned=(set post-id)]
+  |=  [host=@p =board-info =post comments=(map comment-id comment) our=@p now=@da is-mod=? authed=? dark=? pinned=(set post-id) post-last-seen=(unit @da)]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -1019,7 +1045,7 @@
     ?~  body.post  ;span;
     (linkify-div "post-body" (trip u.body.post))
   =/  comment-list=marl
-    (render-flat-comments flat-comments board-path id.post our is-mod authed now)
+    (render-flat-comments flat-comments board-path id.post our is-mod authed now post-last-seen)
   =/  comment-div=manx
     ;div
       ;*  comment-list
@@ -1056,7 +1082,7 @@
 ::  render a flat list of depth-tagged comments
 ::
 ++  render-flat-comments
-  |=  [cmts=(list [@ud comment]) board-path=tape post-id=post-id our=@p is-mod=? authed=? now=@da]
+  |=  [cmts=(list [@ud comment]) board-path=tape post-id=post-id our=@p is-mod=? authed=? now=@da post-last-seen=(unit @da)]
   ^-  marl
   %+  turn  cmts
   |=  [depth=@ud c=comment]
@@ -1096,8 +1122,11 @@
         ;input.btn(type "submit", value "reply");
       ==
     ==
+  =/  is-new-comment=?
+    ?~  post-last-seen  %.n
+    (gth created.c u.post-last-seen)
   ;div(style "margin-left: {indent}px")
-    ;div.cm
+    ;div(class ?:(is-new-comment "cm cm-new" "cm"))
       ;div.cm-meta
         ;+  vote-btn
         ;+  ;/(" {(scow %p author.c)} {(a-co:co points)} points {(time-ago now created.c)}")

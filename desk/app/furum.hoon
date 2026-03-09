@@ -50,6 +50,7 @@
       state-3
       state-4
       state-5
+      state-6
   ==
 ::
 +$  state-2
@@ -98,6 +99,20 @@
       followed=(set [@p board-name])
   ==
 ::
++$  state-6
+  $:  %6
+      registry=(map board-name directory-entry)
+      boards=(map board-name board)
+      cache=(map [@p board-name] cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
+      board-seen=(map [@p board-name] @da)
+      post-seen=(map [@p board-name post-id] @da)
+  ==
+::
 +$  card  card:agent:gall
 --
 ::
@@ -142,10 +157,11 @@
   |=  [name=board-name upd=update]
   ^-  card
   [%give %fact ~[/board/[name]] %furum-update !>(upd)]
+::
 --
 ::
 %-  agent:dbug
-=|  state-5
+=|  state-6
 =*  state  -
 ^-  agent:gall
 |_  =bowl:gall
@@ -180,7 +196,7 @@
       ^-  cached-board
       =/  ni=board-info  [name.info.oc title.info.oc description.info.oc host.info.oc created.info.oc default-role.info.oc %.n]
       [ni roles.oc posts.oc comments.oc *(set post-id)]
-    `this(state [%5 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
+    `this(state [%6 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da)])
   ::
       %3
     =/  new-boards=(map board-name board)
@@ -193,7 +209,7 @@
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id)]
-    `this(state [%5 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
+    `this(state [%6 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da)])
   ::
       %4
     =/  new-boards=(map board-name board)
@@ -206,9 +222,12 @@
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id)]
-    `this(state [%5 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old])
+    `this(state [%6 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da)])
   ::
-    %5  `this(state old)
+      %5
+    `this(state [%6 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da)])
+  ::
+    %6  `this(state old)
   ==
 ::
 ++  on-poke
@@ -550,7 +569,7 @@
       =/  post-list=(list post)  ~(val by posts.u.brd)
       =/  srt  (parse-sort:fl args)
       =/  pg  (parse-page:fl args)
-      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt %.n pg pinned.u.brd))
+      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt %.n pg pinned.u.brd ~))
     ::  public post detail: /b/{host}/{name}/{post-id}
         [%b @ @ @ ~]
       =/  host=@p  (slav %p i.t.path)
@@ -563,7 +582,7 @@
       ?~  pst
         (send-html eyre-id 404 (render-error:fl "post not found" %.n))
       =/  cmts  (~(gut by comments.u.brd) pid *(map comment-id comment))
-      (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl %.n %.n %.n pinned.u.brd))
+      (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl %.n %.n %.n pinned.u.brd ~))
     ==
   ::
   ++  handle-get
@@ -680,13 +699,33 @@
           ?~  cb  ~
           (turn ~(val by posts.u.cb) |=(p=post [host name p]))
         =/  pg  (parse-page:fl args)
-        (send-html eyre-id 200 (render-feed:fl feed-posts our.bowl now.bowl dark pg))
+        (send-html eyre-id 200 (render-feed:fl feed-posts our.bowl now.bowl dark pg board-seen))
       =/  entries=(list directory-entry)  ~(val by registry)
       =/  all-tags=(set @tas)
         %+  roll  entries
         |=  [e=directory-entry acc=(set @tas)]
         (~(uni in acc) tags.e)
-      (send-html eyre-id 200 (render-home:fl entries %all ~ all-tags =(our.bowl registry-ship) dark))
+      =/  bwn=(set [@p board-name])
+        %-  ~(gas in *(set [@p board-name]))
+        %+  murn  entries
+        |=  e=directory-entry
+        ^-  (unit [@p board-name])
+        =/  key  [host.e name.e]
+        =/  last-seen  (~(get by board-seen) key)
+        ?~  last-seen  ~
+        =/  post-map=(map post-id post)
+          ?:  =(host.e our.bowl)
+            =/  brd  (~(get by boards) name.e)
+            ?~(brd *(map post-id post) posts.u.brd)
+          =/  cb  (~(get by cache) [host.e name.e])
+          ?~(cb *(map post-id post) posts.u.cb)
+        =/  newest=@da
+          %+  roll  ~(val by post-map)
+          |=  [p=post acc=@da]
+          ?:((gth created.p acc) created.p acc)
+        ?:  (gth newest u.last-seen)  `key
+        ~
+      (send-html eyre-id 200 (render-home:fl entries %all ~ all-tags =(our.bowl registry-ship) dark bwn))
     ::  curated boards
         [%curated ~]
       =/  entries=(list directory-entry)  ~(val by registry)
@@ -696,7 +735,27 @@
         %+  roll  entries
         |=  [e=directory-entry acc=(set @tas)]
         (~(uni in acc) tags.e)
-      (send-html eyre-id 200 (render-home:fl curated %curated ~ all-tags =(our.bowl registry-ship) dark))
+      =/  bwn=(set [@p board-name])
+        %-  ~(gas in *(set [@p board-name]))
+        %+  murn  curated
+        |=  e=directory-entry
+        ^-  (unit [@p board-name])
+        =/  key  [host.e name.e]
+        =/  last-seen  (~(get by board-seen) key)
+        ?~  last-seen  ~
+        =/  post-map=(map post-id post)
+          ?:  =(host.e our.bowl)
+            =/  brd  (~(get by boards) name.e)
+            ?~(brd *(map post-id post) posts.u.brd)
+          =/  cb  (~(get by cache) [host.e name.e])
+          ?~(cb *(map post-id post) posts.u.cb)
+        =/  newest=@da
+          %+  roll  ~(val by post-map)
+          |=  [p=post acc=@da]
+          ?:((gth created.p acc) created.p acc)
+        ?:  (gth newest u.last-seen)  `key
+        ~
+      (send-html eyre-id 200 (render-home:fl curated %curated ~ all-tags =(our.bowl registry-ship) dark bwn))
     ::  boards filtered by tag
         [%tag @ ~]
       =/  tag=@tas  i.t.path
@@ -707,7 +766,27 @@
         %+  roll  entries
         |=  [e=directory-entry acc=(set @tas)]
         (~(uni in acc) tags.e)
-      (send-html eyre-id 200 (render-home:fl tagged %tag `tag all-tags =(our.bowl registry-ship) dark))
+      =/  bwn=(set [@p board-name])
+        %-  ~(gas in *(set [@p board-name]))
+        %+  murn  tagged
+        |=  e=directory-entry
+        ^-  (unit [@p board-name])
+        =/  key  [host.e name.e]
+        =/  last-seen  (~(get by board-seen) key)
+        ?~  last-seen  ~
+        =/  post-map=(map post-id post)
+          ?:  =(host.e our.bowl)
+            =/  brd  (~(get by boards) name.e)
+            ?~(brd *(map post-id post) posts.u.brd)
+          =/  cb  (~(get by cache) [host.e name.e])
+          ?~(cb *(map post-id post) posts.u.cb)
+        =/  newest=@da
+          %+  roll  ~(val by post-map)
+          |=  [p=post acc=@da]
+          ?:((gth created.p acc) created.p acc)
+        ?:  (gth newest u.last-seen)  `key
+        ~
+      (send-html eyre-id 200 (render-home:fl tagged %tag `tag all-tags =(our.bowl registry-ship) dark bwn))
     ::  registry admin (registry host and delegates)
         [%registry ~]
       ?.  ?|  =(our.bowl registry-ship)
@@ -733,7 +812,9 @@
         =/  srt  (parse-sort:fl args)
         =/  ifl=?  (~(has in followed) [host name])
         =/  pg  (parse-page:fl args)
-        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.brd))
+        =/  bls=(unit @da)  (~(get by board-seen) [host name])
+        =.  board-seen  (~(put by board-seen) [host name] now.bowl)
+        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.brd bls))
       ::  remote board (from cache, auto-subscribe if needed)
       =/  cb  (~(get by cache) [host name])
       ?~  cb
@@ -752,7 +833,9 @@
       =/  srt  (parse-sort:fl args)
       =/  ifl=?  (~(has in followed) [host name])
       =/  pg  (parse-page:fl args)
-      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.cb))
+      =/  bls=(unit @da)  (~(get by board-seen) [host name])
+      =.  board-seen  (~(put by board-seen) [host name] now.bowl)
+      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.cb bls))
     ::  submit form: /b/{host}/{name}/submit
         [%b @ @ %submit ~]
       =/  host=@p  (slav %p i.t.path)
@@ -817,7 +900,9 @@
           (send-html eyre-id 404 (render-error:fl "post not found" dark))
         =/  cmts  (~(gut by comments.u.brd) pid *(map comment-id comment))
         =/  im=?  (is-mod our.bowl u.brd)
-        (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl im %.y dark pinned.u.brd))
+        =/  pls=(unit @da)  (~(get by post-seen) [host name pid])
+        =.  post-seen  (~(put by post-seen) [host name pid] now.bowl)
+        (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl im %.y dark pinned.u.brd pls))
       ::  remote (auto-subscribe if needed)
       =/  cb  (~(get by cache) [host name])
       ?~  cb
@@ -835,7 +920,9 @@
       =/  cmts  (~(gut by comments.u.cb) pid *(map comment-id comment))
       =/  mr  (~(get by my-roles) [host name])
       =/  im=?  ?~(mr %.n =(u.mr %mod))
-      (send-html eyre-id 200 (render-post-page:fl host info.u.cb u.pst cmts our.bowl now.bowl im %.y dark pinned.u.cb))
+      =/  pls=(unit @da)  (~(get by post-seen) [host name pid])
+      =.  post-seen  (~(put by post-seen) [host name pid] now.bowl)
+      (send-html eyre-id 200 (render-post-page:fl host info.u.cb u.pst cmts our.bowl now.bowl im %.y dark pinned.u.cb pls))
     ==
   ::
   ++  handle-post
