@@ -63,6 +63,11 @@
   .sort a:hover { text-decoration: underline; }
   .sort strong { color: #1a1a2e; }
   .tag { font-size: 14px; color: #cc2020; margin-left: 2px; }
+  .img-preview { margin: 4px 0 4px 0; font-size: 14px; }
+  .img-preview summary { cursor: pointer; color: #5a7a8a; }
+  .img-preview summary:hover { color: #8b1a1a; }
+  .img-preview img { max-width: 100%; max-height: 512px; margin-top: 6px;
+                      display: block; }
   .dark-toggle { float: right; font-size: 15px; }
   .dark-toggle button { background: none; border: none; cursor: pointer;
                          font-size: 15px; padding: 0; color: #ffdede; }
@@ -89,6 +94,8 @@
   body.dark .sort { color: #4a6a7a; }
   body.dark .sort a { color: #5a8a9a; }
   body.dark .sort strong { color: #b8b8c8; }
+  body.dark .img-preview summary { color: #4a6a7a; }
+  body.dark .img-preview summary:hover { color: #5a8a9a; }
   body.dark hr { border-color: #1e2838; }
   '''
 ::
@@ -277,6 +284,29 @@
     %'hot'  %hot
     %'new'  %new
     %'top'  %top
+  ==
+::
+::  check if a URL points to an image
+::
+++  is-image-url
+  |=  url=@t
+  ^-  ?
+  =/  u=tape  (cass (trip url))
+  =/  exts=(list tape)
+    ~[".jpg" ".jpeg" ".png" ".gif" ".webp" ".svg" ".bmp"]
+  |-
+  ?~  exts  %.n
+  ?^  (find i.exts u)  %.y
+  $(exts t.exts)
+::
+::  render image preview toggle for image URLs
+::
+++  image-preview
+  |=  url=tape
+  ^-  manx
+  ;details.img-preview
+    ;summary: show image
+    ;img(src url, alt "image", loading "lazy");
   ==
 ::
 ::  linkify: convert URLs in text to clickable links
@@ -526,6 +556,10 @@
     =/  url-host=manx
       ?~  url.post.item  ;span;
       ;span.host: ({(trip u.url.post.item)})
+    =/  img-prev=manx
+      ?.  ?&(?=(^ url.post.item) (is-image-url u.url.post.item))
+        ;span;
+      (image-preview (trip u.url.post.item))
       ;div.rw
         ;span.rk: {(a-co:co rank)}.
         ;div
@@ -533,6 +567,7 @@
             ;+  title-link
           ==
           ;+  url-host
+          ;+  img-prev
           ;div.me
             ;+  ;/("{(a-co:co points)} pts by {(scow %p author.post.item)} {(time-ago now created.post.item)} to ")
             ;a(href board-path): {(trip board-name.item)}
@@ -713,6 +748,10 @@
     =/  url-host=manx
       ?~  url.post  ;span;
       ;span.host: ({(trip u.url.post)})
+    =/  img-prev=manx
+      ?.  ?&(?=(^ url.post) (is-image-url u.url.post))
+        ;span;
+      (image-preview (trip u.url.post))
     =/  del-btn=manx
       ?.  ?&(authed ?|(=(our author.post) is-mod))  ;span;
       ;form(method "post", action "{post-href}/delete", style "display:inline")
@@ -727,6 +766,7 @@
           ;+  title-link
         ==
         ;+  url-host
+        ;+  img-prev
         ;div.me
           ;+  ;/("{(a-co:co points)} points by {(scow %p author.post)} {(time-ago now created.post)} | ")
           ;a(href post-href): {(a-co:co comment-count.post)} comments
@@ -771,6 +811,10 @@
   =/  url-link=manx
     ?~  url.post  ;span;
     ;a(href (trip u.url.post), target "_blank", rel "noopener noreferrer"): {(trip u.url.post)}
+  =/  img-prev=manx
+    ?.  ?&(?=(^ url.post) (is-image-url u.url.post))
+      ;span;
+    (image-preview (trip u.url.post))
   =/  edit-link=manx
     ?.  ?&(authed =(our author.post))  ;span;
     ;span
@@ -797,6 +841,7 @@
       ;+  vote-btn
       ;span.ti: {" "}{(trip title.post)}
       ;+  url-link
+      ;+  img-prev
       ;div.me
         ;+  ;/("{(a-co:co points)} points by {(scow %p author.post)} {(time-ago now created.post)}")
         ;+  edit-link
