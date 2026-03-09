@@ -405,6 +405,27 @@
     ;img(src url, alt "image", loading "lazy");
   ==
 ::
+::  extract image URLs from text body
+::
+++  extract-image-urls
+  |=  text=@t
+  ^-  (list tape)
+  =/  txt=tape  (trip text)
+  =/  acc=(list tape)  ~
+  |-
+  =/  https-idx  (find "https://" txt)
+  =/  http-idx   (find "http://" txt)
+  =/  url-idx=(unit @)
+    ?~  https-idx  http-idx
+    ?~  http-idx   https-idx
+    `(min u.https-idx u.http-idx)
+  ?~  url-idx  (flop acc)
+  =/  from=tape  (slag u.url-idx txt)
+  =/  [url=tape rest=tape]  (extract-url from)
+  ?:  (is-image-url (crip url))
+    $(txt rest, acc [url acc])
+  $(txt rest)
+::
 ::  linkify: convert URLs in text to clickable links
 ::  splits a tape into marl of text nodes and anchor elements
 ::
@@ -1076,6 +1097,7 @@
         ;+  del-btn
       ==
       ;+  (linkify-div "" (trip body.c))
+      ;*  (turn (extract-image-urls body.c) image-preview)
       ;+  reply-section
     ==
   ==
