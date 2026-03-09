@@ -551,6 +551,31 @@
           [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
           [%give %kick ~[/http-response/[eyre-id]] ~]
       ==
+    ::  S3 storage config (JSON API for upload JS)
+        [%s3-config ~]
+      =/  get-str
+        |=  [=json keys=(list @t)]
+        ^-  @t
+        ?~  keys  ?:(?=([%s *] json) p.json '')
+        ?.  ?=([%o *] json)  ''
+        =/  v  (~(get by p.json) i.keys)
+        ?~  v  ''
+        $(json u.v, keys t.keys)
+      =/  cred-json=json
+        .^(json %gx /(scot %p our.bowl)/storage/(scot %da now.bowl)/credentials/json)
+      =/  conf-json=json
+        .^(json %gx /(scot %p our.bowl)/storage/(scot %da now.bowl)/configuration/json)
+      %-  send-json
+      :+  eyre-id  200
+      %-  pairs:enjs:format
+      :~  ['endpoint' s+(get-str cred-json ~['storage-update' 'credentials' 'endpoint'])]
+          ['accessKeyId' s+(get-str cred-json ~['storage-update' 'credentials' 'accessKeyId'])]
+          ['secretAccessKey' s+(get-str cred-json ~['storage-update' 'credentials' 'secretAccessKey'])]
+          ['bucket' s+(get-str conf-json ~['storage-update' 'configuration' 'currentBucket'])]
+          ['region' s+(get-str conf-json ~['storage-update' 'configuration' 'region'])]
+          ['publicUrlBase' s+(get-str conf-json ~['storage-update' 'configuration' 'publicUrlBase'])]
+          ['service' s+(get-str conf-json ~['storage-update' 'configuration' 'service'])]
+      ==
     ::  home: feed (default) or directory
         ~
       =/  home-view=@t  (~(gut by args) 'view' 'feed')
@@ -954,6 +979,18 @@
     ^-  (quip card _this)
     =/  =response-header:http  [status ~[['content-type' 'text/html'] ['cache-control' 'no-store, no-cache, must-revalidate'] ['pragma' 'no-cache']]]
     =/  data=octs  (manx-to-octs:fl page)
+    :_  this
+    :~  [%give %fact ~[/http-response/[eyre-id]] %http-response-header !>(response-header)]
+        [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
+        [%give %kick ~[/http-response/[eyre-id]] ~]
+    ==
+  ::
+  ++  send-json
+    |=  [eyre-id=@ta status=@ud jon=json]
+    ^-  (quip card _this)
+    =/  txt=@t  (en:json:html jon)
+    =/  =response-header:http  [status ~[['content-type' 'application/json'] ['cache-control' 'no-store']]]
+    =/  data=octs  [(met 3 txt) txt]
     :_  this
     :~  [%give %fact ~[/http-response/[eyre-id]] %http-response-header !>(response-header)]
         [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]

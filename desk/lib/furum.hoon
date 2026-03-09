@@ -97,6 +97,97 @@
   body.dark .img-preview summary { color: #4a6a7a; }
   body.dark .img-preview summary:hover { color: #5a8a9a; }
   body.dark hr { border-color: #1e2838; }
+  .upload-section { margin: 8px 0; }
+  .upload-section input[type=file] { font-size: 14px; }
+  .upload-btn { padding: 6px 16px; cursor: pointer; background: #cc2020;
+                color: #fff; border: none; font-size: 14px; margin-left: 8px; }
+  .upload-btn:hover { background: #a01818; }
+  .upload-btn:disabled { background: #999; cursor: default; }
+  .upload-status { font-size: 14px; color: #5a7a8a; margin-left: 8px; }
+  .upload-err { font-size: 14px; color: #cc2020; margin-left: 8px; }
+  '''
+::
+::  inline JS for S3 image upload (works on submit form and comment forms)
+::
+++  upload-js
+  ^-  @t
+  '''
+  (function(){
+    async function doUpload(fileInput,btn,statusEl,target){
+      var file=fileInput.files[0];
+      if(!file){statusEl.textContent='select a file first';statusEl.className='upload-err';return;}
+      btn.disabled=true;statusEl.textContent='loading config...';statusEl.className='upload-status';
+      try{
+        var res=await fetch('/apps/furum/s3-config',{credentials:'include'});
+        if(!res.ok)throw new Error('could not load storage config');
+        var cfg=await res.json();
+        if(!cfg.accessKeyId||!cfg.bucket)throw new Error('S3 not configured. Set up storage in System Preferences.');
+        var ts=Date.now();
+        var safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+        var key='furum/'+ts+'-'+safe;
+        var ct=file.type||'application/octet-stream';
+        var endpoint=cfg.endpoint||('https://s3.'+(cfg.region||'us-east-1')+'.amazonaws.com');
+        statusEl.textContent='uploading...';
+        var purl=await presign(endpoint,cfg.bucket,key,cfg.region||'us-east-1',cfg.accessKeyId,cfg.secretAccessKey,ct);
+        var xhr=new XMLHttpRequest();
+        xhr.open('PUT',purl);
+        xhr.setRequestHeader('Content-Type',ct);
+        xhr.setRequestHeader('Cache-Control','public, max-age=3600');
+        xhr.setRequestHeader('x-amz-acl','public-read');
+        xhr.upload.onprogress=function(e){if(e.lengthComputable)statusEl.textContent=Math.round(e.loaded/e.total*100)+'%';};
+        xhr.onload=function(){
+          if(xhr.status>=200&&xhr.status<300){
+            var finalUrl=cfg.publicUrlBase?(cfg.publicUrlBase+'/'+key):(endpoint+'/'+cfg.bucket+'/'+key);
+            if(target.tagName==='INPUT'){target.value=finalUrl;}
+            else{var v=target.value;target.value=v+(v&&!v.endsWith('\n')?'\n':'')+finalUrl;}
+            statusEl.textContent='uploaded!';statusEl.className='upload-status';
+            btn.disabled=false;
+          }else{statusEl.textContent='upload failed: '+xhr.status;statusEl.className='upload-err';btn.disabled=false;}
+        };
+        xhr.onerror=function(){statusEl.textContent='network error';statusEl.className='upload-err';btn.disabled=false;};
+        xhr.send(file);
+      }catch(e){statusEl.textContent=e.message;statusEl.className='upload-err';btn.disabled=false;}
+    }
+    document.querySelectorAll('.upload-section').forEach(function(sec){
+      var btn=sec.querySelector('.upload-btn');
+      var fi=sec.querySelector('input[type=file]');
+      var st=sec.querySelector('.upload-status');
+      var mode=sec.dataset.mode;
+      if(!btn||!fi)return;
+      btn.addEventListener('click',function(){
+        var form=sec.closest('form');
+        var target=mode==='url'?form.querySelector('input[name=url]'):form.querySelector('textarea[name=body]');
+        if(target)doUpload(fi,btn,st,target);
+      });
+    });
+    async function presign(endpoint,bucket,key,region,akid,secret,ct){
+      var u=new URL(endpoint+'/'+bucket+'/'+key);
+      var now=new Date();
+      var ds=now.toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+      var dd=ds.slice(0,8);
+      var scope=dd+'/'+region+'/s3/aws4_request';
+      var sh='cache-control;content-type;host;x-amz-acl';
+      u.searchParams.set('X-Amz-Algorithm','AWS4-HMAC-SHA256');
+      u.searchParams.set('X-Amz-Credential',akid+'/'+scope);
+      u.searchParams.set('X-Amz-Date',ds);
+      u.searchParams.set('X-Amz-Expires','3600');
+      u.searchParams.set('X-Amz-SignedHeaders',sh);
+      var sp=[...u.searchParams.entries()].sort(function(a,b){return a[0]<b[0]?-1:a[0]>b[0]?1:0;});
+      var cqs=sp.map(function(p){return ue(p[0])+'='+ue(p[1]);}).join('&');
+      var ch='cache-control:public, max-age=3600\ncontent-type:'+ct+'\nhost:'+u.host+'\nx-amz-acl:public-read\n';
+      var cr=['PUT',u.pathname,cqs,ch,sh,'UNSIGNED-PAYLOAD'].join('\n');
+      var sts=['AWS4-HMAC-SHA256',ds,scope,await sha(cr)].join('\n');
+      var sk=await sigkey(secret,dd,region,'s3');
+      var sig=await hmh(sk,sts);
+      u.searchParams.set('X-Amz-Signature',sig);
+      return u.toString();
+    }
+    function ue(s){return encodeURIComponent(s).replace(/[!'()*]/g,function(c){return '%'+c.charCodeAt(0).toString(16).toUpperCase();});}
+    async function hm(k,d){var ck=await crypto.subtle.importKey('raw',k instanceof ArrayBuffer?k:new TextEncoder().encode(k),{name:'HMAC',hash:'SHA-256'},false,['sign']);return crypto.subtle.sign('HMAC',ck,new TextEncoder().encode(d));}
+    async function hmh(k,d){var s=await hm(k,d);return Array.from(new Uint8Array(s)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');}
+    async function sha(d){var h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(d));return Array.from(new Uint8Array(h)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');}
+    async function sigkey(k,ds,r,s){var a=await hm('AWS4'+k,ds);a=await hm(a,r);a=await hm(a,s);return hm(a,'aws4_request');}
+  })();
   '''
 ::
 ::  URL parsing: split URL into path segments and query params
@@ -798,7 +889,12 @@
       ;span;
     ;form(method "post", action "{post-path}/comment")
       ;textarea(name "body", placeholder "add a comment...");
-      ;br;
+      ;div.upload-section(data-mode "body")
+        ;label: attach image:
+        ;input(type "file", accept "image/*");
+        ;button.upload-btn(type "button"): upload
+        ;span.upload-status;
+      ==
       ;input.btn(type "submit", value "add comment");
     ==
   =/  vote-btn=manx
@@ -849,12 +945,16 @@
       ==
       ;+  body-section
     ==
+  =/  script-node=manx
+    ?.  authed  ;span;
+    [[%script ~] [[[%$ [%$ (trip upload-js)]~] ~] ~]]
   =/  post-content=marl
     :~  post-detail
         ;hr;
         comment-form
         ;hr;
         comment-div
+        script-node
     ==
   %-  page-shell
   [(crip "furum - {(trip title.post)}") post-content `[board-path (trip title.board-info)] !authed dark]
@@ -893,7 +993,12 @@
       ;form(method "post", action "{board-path}/{(a-co:co post-id)}/comment")
         ;input(type "hidden", name "parent", value "{(a-co:co id.c)}");
         ;textarea(name "body", rows "3", cols "60");
-        ;br;
+        ;div.upload-section(data-mode "body")
+          ;label: attach image:
+          ;input(type "file", accept "image/*");
+          ;button.upload-btn(type "button"): upload
+          ;span.upload-status;
+        ==
         ;input.btn(type "submit", value "reply");
       ==
     ==
@@ -916,6 +1021,8 @@
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name)}"
+  =/  script-node=manx
+    [[%script ~] [[[%$ [%$ (trip upload-js)]~] ~] ~]]
   %-  page-shell
   :*  'furum - submit'
     ^-  marl
@@ -933,6 +1040,12 @@
           ;br;
           ;input(type "url", name "url");
         ==
+        ;div.upload-section(data-mode "url")
+          ;label: or upload an image:
+          ;input(type "file", accept "image/*");
+          ;button.upload-btn(type "button"): upload
+          ;span.upload-status;
+        ==
         ;br;
         ;div
           ;label: text (optional, for text posts)
@@ -942,6 +1055,7 @@
         ;br;
         ;input.btn(type "submit", value "submit");
       ==
+      script-node
     ==
     `[board-path (trip name)]
     %.n
