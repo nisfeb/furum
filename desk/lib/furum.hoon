@@ -94,9 +94,13 @@
   body.dark .sort { color: #4a6a7a; }
   body.dark .sort a { color: #5a8a9a; }
   body.dark .sort strong { color: #b8b8c8; }
+  body.dark .pinned { background: #14140a; border-left-color: #cc2020; }
   body.dark .img-preview summary { color: #4a6a7a; }
   body.dark .img-preview summary:hover { color: #5a8a9a; }
   body.dark hr { border-color: #1e2838; }
+  .pinned { background: #f5f0e0; border-left: 3px solid #cc2020; padding-left: 8px; }
+  .pin-tag { font-size: 12px; color: #cc2020; font-weight: bold; text-transform: uppercase;
+             margin-right: 8px; white-space: nowrap; }
   .upload-section { margin: 8px 0; }
   .upload-section input[type=file] { font-size: 14px; }
   .upload-btn { padding: 6px 16px; cursor: pointer; background: #cc2020;
@@ -750,9 +754,16 @@
 ::  BOARD PAGE: list of posts
 ::
 ++  render-board
-  |=  [host=@p =board-info posts=(list post) our=@p now=@da is-mod=? authed=? dark=? sort=?(%hot %new %top) is-followed=? page=@ud]
+  |=  $:  host=@p  =board-info  posts=(list post)  our=@p  now=@da
+          is-mod=?  authed=?  dark=?  sort=?(%hot %new %top)
+          is-followed=?  page=@ud  pin-set=(set post-id)
+      ==
   ^-  manx
-  =/  sorted  (sort-posts-dispatch sort now posts)
+  =/  pinned-posts=(list post)
+    (sort-posts-by-new (skim posts |=(p=post (~(has in pin-set) id.p))))
+  =/  unpinned=(list post)
+    (skim posts |=(p=post !(~(has in pin-set) id.p)))
+  =/  sorted  (sort-posts-dispatch sort now unpinned)
   =/  [total=@ud paged=(list post)]  (paginate page sorted)
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -808,8 +819,41 @@
       ;+  nav-section
       ;+  sort-bar
     ==
+  =/  pinned-rows=marl
+    ?.  ?&(!=(~ pinned-posts) =(page 1))  ~
+    %+  turn  pinned-posts
+    |=  =post
+    ^-  manx
+    =/  post-href=tape  "{board-path}/{(a-co:co id.post)}"
+    =/  title-href=tape
+      ?^  url.post  (trip u.url.post)
+      post-href
+    =/  title-link=manx
+      ?^  url.post
+        ;a(href title-href, target "_blank", rel "noopener noreferrer"): {(trip title.post)}
+      ;a(href title-href): {(trip title.post)}
+    =/  unpin-btn=manx
+      ?.  ?&(authed is-mod)  ;span;
+      ;form(method "post", action "{post-href}/pin", style "display:inline")
+        ;input(type "hidden", name "pinned", value "false");
+        ;+  ;/(" | ")
+        ;button.va(type "submit"): unpin
+      ==
+    ;div(class "rw pinned")
+      ;span.pin-tag: pinned
+      ;div
+        ;span.ti
+          ;+  title-link
+        ==
+        ;div.me
+          ;a(href post-href): {(a-co:co comment-count.post)} comments
+          ;+  unpin-btn
+        ==
+      ==
+    ==
   =/  post-rows=marl
     ?~  paged
+      ?.  ?=(~ pinned-posts)  ~
       :~  ;p.me: No posts yet.
       ==
     =/  offset=@ud  (mul (dec page) per-page)
@@ -849,6 +893,13 @@
         ;+  ;/(" | ")
         ;button.va(type "submit"): delete
       ==
+    =/  pin-btn=manx
+      ?.  ?&(authed is-mod)  ;span;
+      ;form(method "post", action "{post-href}/pin", style "display:inline")
+        ;input(type "hidden", name "pinned", value "true");
+        ;+  ;/(" | ")
+        ;button.va(type "submit"): pin
+      ==
     ;div.rw
       ;span.rk: {(a-co:co rank)}.
       ;+  vote-btn
@@ -862,18 +913,19 @@
           ;+  ;/("{(a-co:co points)} points by {(scow %p author.post)} {(time-ago now created.post)} | ")
           ;a(href post-href): {(a-co:co comment-count.post)} comments
           ;+  del-btn
+          ;+  pin-btn
         ==
       ==
     ==
   =/  pag-base=tape  "{board-path}?sort={(trip sort)}&"
   =/  pag-nav=manx  (render-pagination pag-base page total)
   %-  page-shell
-  [(crip "furum - {(trip title.board-info)}") [header (weld post-rows ~[pag-nav])] `[board-path (trip title.board-info)] !authed dark]
+  [(crip "furum - {(trip title.board-info)}") [header (weld pinned-rows (weld post-rows ~[pag-nav]))] `[board-path (trip title.board-info)] !authed dark]
 ::
 ::  POST DETAIL PAGE: post with comments
 ::
 ++  render-post-page
-  |=  [host=@p =board-info =post comments=(map comment-id comment) our=@p now=@da is-mod=? authed=? dark=?]
+  |=  [host=@p =board-info =post comments=(map comment-id comment) our=@p now=@da is-mod=? authed=? dark=? pinned=(set post-id)]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -923,6 +975,17 @@
       ;+  ;/(" | ")
       ;button.va(type "submit"): delete post
     ==
+  =/  pin-btn=manx
+    ?.  ?&(authed is-mod)  ;span;
+    =/  is-pinned=?  (~(has in pinned) id.post)
+    ;form(method "post", action "{post-path}/pin", style "display:inline")
+      ;input(type "hidden", name "pinned", value ?:(is-pinned "false" "true"));
+      ;+  ;/(" | ")
+      ;button.va(type "submit"): {?:(is-pinned "unpin" "pin")}
+    ==
+  =/  pin-tag=manx
+    ?.  (~(has in pinned) id.post)  ;span;
+    ;span.pin-tag: pinned
   =/  body-section=manx
     ?~  body.post  ;span;
     (linkify-div "post-body" (trip u.body.post))
@@ -934,6 +997,7 @@
     ==
   =/  post-detail=manx
     ;div
+      ;+  pin-tag
       ;+  vote-btn
       ;span.ti: {" "}{(trip title.post)}
       ;+  url-link
@@ -942,6 +1006,7 @@
         ;+  ;/("{(a-co:co points)} points by {(scow %p author.post)} {(time-ago now created.post)}")
         ;+  edit-link
         ;+  del-btn
+        ;+  pin-btn
       ==
       ;+  body-section
     ==

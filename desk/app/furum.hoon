@@ -30,11 +30,26 @@
       posts=(map post-id post)
       comments=(map post-id (map comment-id comment))
   ==
++$  s4-board
+  $:  info=board-info
+      roles=(map @p role)
+      next-post-id=post-id
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+      next-comment-ids=(map post-id comment-id)
+  ==
++$  s4-cached-board
+  $:  info=board-info
+      roles=(map @p role)
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+  ==
 ::
 +$  versioned-state
   $%  state-2
       state-3
       state-4
+      state-5
   ==
 ::
 +$  state-2
@@ -51,8 +66,8 @@
 +$  state-3
   $:  %3
       registry=(map board-name directory-entry)
-      boards=(map board-name board)
-      cache=(map [@p board-name] cached-board)
+      boards=(map board-name s4-board)
+      cache=(map [@p board-name] s4-cached-board)
       subs=(set [@p board-name])
       dark-mode=(set @p)
       registry-admins=(set @p)
@@ -61,6 +76,18 @@
 ::
 +$  state-4
   $:  %4
+      registry=(map board-name directory-entry)
+      boards=(map board-name s4-board)
+      cache=(map [@p board-name] s4-cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
+  ==
+::
++$  state-5
+  $:  %5
       registry=(map board-name directory-entry)
       boards=(map board-name board)
       cache=(map [@p board-name] cached-board)
@@ -118,7 +145,7 @@
 --
 ::
 %-  agent:dbug
-=|  state-4
+=|  state-5
 =*  state  -
 ^-  agent:gall
 |_  =bowl:gall
@@ -140,25 +167,48 @@
   =/  old  !<(versioned-state old-state)
   ?-  -.old
       %2
-    ::  migrate boards: add public=%.n to each board-info
+    ::  migrate boards: add public=%.n to each board-info, then pinned
     =/  new-boards=(map board-name board)
       %-  ~(run by boards.old)
       |=  ob=old-board
       ^-  board
       =/  ni=board-info  [name.info.ob title.info.ob description.info.ob host.info.ob created.info.ob default-role.info.ob %.n]
-      [ni roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob]
-    ::  migrate cache: add public=%.n to each cached board-info
+      [ni roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id)]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=old-cached-board
       ^-  cached-board
       =/  ni=board-info  [name.info.oc title.info.oc description.info.oc host.info.oc created.info.oc default-role.info.oc %.n]
-      [ni roles.oc posts.oc comments.oc]
-    `this(state [%4 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
+      [ni roles.oc posts.oc comments.oc *(set post-id)]
+    `this(state [%5 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
   ::
-    %3  `this(state [%4 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
+      %3
+    =/  new-boards=(map board-name board)
+      %-  ~(run by boards.old)
+      |=  ob=s4-board
+      ^-  board
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id)]
+    =/  new-cache=(map [@p board-name] cached-board)
+      %-  ~(run by cache.old)
+      |=  oc=s4-cached-board
+      ^-  cached-board
+      [info.oc roles.oc posts.oc comments.oc *(set post-id)]
+    `this(state [%5 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
   ::
-    %4  `this(state old)
+      %4
+    =/  new-boards=(map board-name board)
+      %-  ~(run by boards.old)
+      |=  ob=s4-board
+      ^-  board
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id)]
+    =/  new-cache=(map [@p board-name] cached-board)
+      %-  ~(run by cache.old)
+      |=  oc=s4-cached-board
+      ^-  cached-board
+      [info.oc roles.oc posts.oc comments.oc *(set post-id)]
+    `this(state [%5 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old])
+  ::
+    %5  `this(state old)
   ==
 ::
 ++  on-poke
@@ -201,6 +251,7 @@
             posts=*(map post-id post)
             comments=*(map post-id (map comment-id comment))
             next-comment-ids=*(map post-id comment-id)
+            pinned=*(set post-id)
         ==
       `this(boards (~(put by boards) name.act board))
     ::
@@ -215,6 +266,16 @@
       =/  new-brd  brd(info new-info)
       :_  this(boards (~(put by boards) name.act new-brd))
       :~  (give-board-update name.act [%board-info-update new-info])
+      ==
+    ::
+        %pin-post
+      =/  brd  (~(got by boards) name.act)
+      ?>  (is-mod src.bowl brd)
+      =/  new-pinned=(set post-id)
+        ?:(pinned.act (~(put in pinned.brd) id.act) (~(del in pinned.brd) id.act))
+      =/  new-brd  brd(pinned new-pinned)
+      :_  this(boards (~(put by boards) name.act new-brd))
+      :~  (give-board-update name.act [%pin-update id.act pinned.act])
       ==
     ::
         %set-role
@@ -488,7 +549,7 @@
       =/  post-list=(list post)  ~(val by posts.u.brd)
       =/  srt  (parse-sort:fl args)
       =/  pg  (parse-page:fl args)
-      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt %.n pg))
+      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt %.n pg pinned.u.brd))
     ::  public post detail: /b/{host}/{name}/{post-id}
         [%b @ @ @ ~]
       =/  host=@p  (slav %p i.t.path)
@@ -501,7 +562,7 @@
       ?~  pst
         (send-html eyre-id 404 (render-error:fl "post not found" %.n))
       =/  cmts  (~(gut by comments.u.brd) pid *(map comment-id comment))
-      (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl %.n %.n %.n))
+      (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl %.n %.n %.n pinned.u.brd))
     ==
   ::
   ++  handle-get
@@ -647,7 +708,7 @@
         =/  srt  (parse-sort:fl args)
         =/  ifl=?  (~(has in followed) [host name])
         =/  pg  (parse-page:fl args)
-        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt ifl pg))
+        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.brd))
       ::  remote board (from cache, auto-subscribe if needed)
       =/  cb  (~(get by cache) [host name])
       ?~  cb
@@ -666,7 +727,7 @@
       =/  srt  (parse-sort:fl args)
       =/  ifl=?  (~(has in followed) [host name])
       =/  pg  (parse-page:fl args)
-      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg))
+      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.cb))
     ::  submit form: /b/{host}/{name}/submit
         [%b @ @ %submit ~]
       =/  host=@p  (slav %p i.t.path)
@@ -731,7 +792,7 @@
           (send-html eyre-id 404 (render-error:fl "post not found" dark))
         =/  cmts  (~(gut by comments.u.brd) pid *(map comment-id comment))
         =/  im=?  (is-mod our.bowl u.brd)
-        (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl im %.y dark))
+        (send-html eyre-id 200 (render-post-page:fl host info.u.brd u.pst cmts our.bowl now.bowl im %.y dark pinned.u.brd))
       ::  remote (auto-subscribe if needed)
       =/  cb  (~(get by cache) [host name])
       ?~  cb
@@ -749,7 +810,7 @@
       =/  cmts  (~(gut by comments.u.cb) pid *(map comment-id comment))
       =/  mr  (~(get by my-roles) [host name])
       =/  im=?  ?~(mr %.n =(u.mr %mod))
-      (send-html eyre-id 200 (render-post-page:fl host info.u.cb u.pst cmts our.bowl now.bowl im %.y dark))
+      (send-html eyre-id 200 (render-post-page:fl host info.u.cb u.pst cmts our.bowl now.bowl im %.y dark pinned.u.cb))
     ==
   ::
   ++  handle-post
@@ -889,6 +950,19 @@
       =/  cid=@ud  (slav %ud cid-val)
       =/  =action  [%delete-comment name pid cid]
       =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/{(a-co:co pid)}")
+      ?:  =(host our.bowl)
+        =^  cards  this  (handle-action action)
+        [(weld cards redir) this]
+      [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
+    ::  pin/unpin post: POST /b/{host}/{name}/{post-id}/pin
+        [%b @ @ @ %pin ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      =/  pid=@ud  (slav %ud i.t.t.t.path)
+      =/  pin-val=@t  (~(gut by form) 'pinned' '')
+      =/  pinned=?  =('true' pin-val)
+      =/  =action  [%pin-post name pid pinned]
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
@@ -1058,7 +1132,7 @@
     =/  post-list=(list post)  ~(val by posts.brd)
     =/  subscriber-role=role  (get-role src.bowl brd)
     :_  this
-    :~  [%give %fact ~ %furum-update !>(`update`[%initial info.brd roles.brd post-list])]
+    :~  [%give %fact ~ %furum-update !>(`update`[%initial info.brd roles.brd post-list comments.brd pinned.brd])]
         [%give %fact ~ %furum-update !>(`update`[%role-update src.bowl `subscriber-role])]
     ==
   ==
@@ -1176,7 +1250,7 @@
         |=  [p=post acc=(map post-id post)]
         (~(put by acc) id.p p)
       =/  =cached-board
-        [info.upd roles.upd post-map *(map post-id (map comment-id comment))]
+        [info.upd roles.upd post-map comments.upd pinned.upd]
       `this(cache (~(put by cache) key cached-board), my-roles (~(put by my-roles) key default-role.info.upd))
     ::
         %new-post
@@ -1243,6 +1317,12 @@
         %board-info-update
       =/  cb  (~(got by cache) key)
       `this(cache (~(put by cache) key cb(info info.upd)))
+    ::
+        %pin-update
+      =/  cb  (~(got by cache) key)
+      =/  new-pinned=(set post-id)
+        ?:(pinned.upd (~(put in pinned.cb) id.upd) (~(del in pinned.cb) id.upd))
+      `this(cache (~(put by cache) key cb(pinned new-pinned)))
     ==
   --
 ::
