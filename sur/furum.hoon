@@ -1,0 +1,148 @@
+::  sur/furum.hoon: type definitions for %furum
+::
+|%
+::  identity types
+::
++$  board-name    @tas
++$  post-id       @ud
++$  comment-id    @ud
++$  role          ?(%mod %poster %reader)
+::
+::  board metadata
+::
++$  board-info
+  $:  name=board-name
+      title=@t
+      description=@t
+      host=@p
+      created=@da
+      default-role=role
+      public=?
+  ==
+::
+::  a post
+::
++$  post
+  $:  id=post-id
+      author=@p
+      title=@t
+      url=(unit @t)
+      body=(unit @t)
+      created=@da
+      up-votes=(set @p)
+      down-votes=(set @p)
+      comment-count=@ud
+  ==
+::
+::  a comment
+::
++$  comment
+  $:  id=comment-id
+      parent=(unit comment-id)
+      author=@p
+      body=@t
+      created=@da
+      up-votes=(set @p)
+      down-votes=(set @p)
+  ==
+::
+::  vote target discriminator
+::
++$  vote-target
+  $%  [%post id=post-id]
+      [%comment post=post-id id=comment-id]
+  ==
+::
+::  full board state (on host ship)
+::
++$  board
+  $:  info=board-info
+      roles=(map @p role)
+      next-post-id=post-id
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+      next-comment-ids=(map post-id comment-id)
+  ==
+::
+::  registry directory entry
+::
++$  directory-entry
+  $:  name=board-name
+      title=@t
+      description=@t
+      host=@p
+      tags=(set @tas)
+      curated=?
+  ==
+::
+::  client-side cached board
+::
++$  cached-board
+  $:  info=board-info
+      roles=(map @p role)
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+  ==
+::
+::  actions: pokes to a board host
+::
++$  action
+  $%  ::  board management (host ship only)
+      [%create-board name=board-name title=@t description=@t default-role=role]
+      [%delete-board name=board-name]
+      ::  moderation
+      [%set-role name=board-name who=@p =role]
+      [%remove-role name=board-name who=@p]
+      ::  content
+      [%new-post name=board-name title=@t url=(unit @t) body=(unit @t)]
+      [%delete-post name=board-name id=post-id]
+      ::  comments
+      [%new-comment name=board-name post=post-id parent=(unit comment-id) body=@t]
+      [%delete-comment name=board-name post=post-id id=comment-id]
+      ::  board settings
+      [%set-public name=board-name public=?]
+      ::  subscriptions
+      [%resub host=@p name=board-name]
+      ::  preferences
+      [%toggle-dark-mode ~]
+      ::  votes
+      [%upvote name=board-name target=vote-target]
+      [%downvote name=board-name target=vote-target]
+      [%remove-vote name=board-name target=vote-target]
+  ==
+::
+::  registry actions: pokes to the registry ship
+::
++$  registry-action
+  $%  [%register name=board-name title=@t description=@t]
+      [%unregister name=board-name]
+      [%tag-board name=board-name tag=@tas]
+      [%untag-board name=board-name tag=@tas]
+      [%curate-board name=board-name curated=?]
+      [%add-registry-admin who=@p]
+      [%remove-registry-admin who=@p]
+  ==
+::
+::  updates: subscription facts from a board host
+::
++$  update
+  $%  [%initial info=board-info roles=(map @p role) posts=(list post)]
+      [%new-post =post]
+      [%delete-post id=post-id]
+      [%new-comment post=post-id =comment]
+      [%delete-comment post=post-id id=comment-id]
+      [%vote-update target=vote-target up-votes=(set @p) down-votes=(set @p)]
+      [%role-update who=@p role=(unit role)]
+      [%board-info-update info=board-info]
+  ==
+::
+::  registry updates: subscription facts from the registry
+::
++$  registry-update
+  $%  [%initial entries=(list directory-entry)]
+      [%add =directory-entry]
+      [%remove name=board-name]
+      [%tag name=board-name tags=(set @tas)]
+      [%curate name=board-name curated=?]
+  ==
+--
