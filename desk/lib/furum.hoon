@@ -3,6 +3,12 @@
 /-  *furum
 |%
 ::
+::  favicon SVG: digamma (Ϝ) on red background
+::
+++  furum-favicon-svg
+  ^-  cord
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#cc2020"/><text x="16" y="24" font-family="serif" font-size="26" font-weight="bold" fill="#fff" text-anchor="middle">&#x03DC;</text></svg>'
+::
 ::  icon image as base64 JPEG
 ::
 ++  furum-icon-b64
@@ -614,6 +620,7 @@
       ;meta(name "theme-color", content "#cc2020");
       ;link(rel "manifest", href "/apps/furum/manifest");
       ;link(rel "apple-touch-icon", href "/apps/furum/icon");
+      ;link(rel "icon", type "image/svg+xml", href "/apps/furum/favicon");
       ;title: {(trip title)}
       ;+  style-node
       ;+  sw-node

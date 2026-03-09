@@ -503,6 +503,7 @@
             ?|  =([%manifest ~] path)
                 =([%sw ~] path)
                 =([%icon ~] path)
+                =([%favicon ~] path)
             ==
         ==
       (handle-get eyre-id path %.n args)
@@ -570,6 +571,16 @@
     ^-  (quip card _this)
     ?+    path
       (send-html eyre-id 404 (render-error:fl "page not found" dark))
+    ::  favicon (SVG)
+        [%favicon ~]
+      =/  svg=@t  furum-favicon-svg:fl
+      =/  =response-header:http  [200 ~[['content-type' 'image/svg+xml']]]
+      =/  data=octs  [(met 3 svg) svg]
+      :_  this
+      :~  [%give %fact ~[/http-response/[eyre-id]] %http-response-header !>(response-header)]
+          [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
+          [%give %kick ~[/http-response/[eyre-id]] ~]
+      ==
     ::  app icon
         [%icon ~]
       =/  b64=cord  furum-icon-b64:fl
