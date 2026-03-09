@@ -122,6 +122,25 @@
              border-radius: 50%; margin-right: 4px; vertical-align: middle; }
   .cm-new { background: #fdf5e6; border-left-color: #cc8020; }
   body.dark .cm-new { background: #1a1808; border-left-color: #cc8020; }
+  .board-layout { display: flex; gap: 24px; }
+  .board-main { flex: 1; min-width: 0; }
+  .board-sidebar { width: 280px; flex-shrink: 0; padding: 12px 16px;
+                   background: #f6f0e8; border: 1px solid #ddd; border-radius: 4px;
+                   font-size: 14px; line-height: 1.5; white-space: pre-wrap;
+                   word-wrap: break-word; align-self: flex-start; }
+  .board-sidebar h4 { margin: 0 0 8px 0; font-size: 14px; color: #828282; text-transform: uppercase; }
+  .board-sidebar a { color: #cc2020; }
+  body.dark .board-sidebar { background: #1a1e28; border-color: #2a3040; }
+  body.dark .board-sidebar a { color: #f08080; }
+  .mobile-sidebar { display: none; margin-bottom: 12px; font-size: 14px; }
+  .mobile-sidebar summary { cursor: pointer; color: #828282; font-size: 13px; }
+  .mobile-sidebar a { color: #cc2020; }
+  body.dark .mobile-sidebar a { color: #f08080; }
+  @media (max-width: 768px) {
+    .board-layout { flex-direction: column; }
+    .board-sidebar { display: none; }
+    .mobile-sidebar { display: block; }
+  }
   '''
 ::
 ::  inline JS for S3 image upload (works on submit form and comment forms)
@@ -806,7 +825,7 @@
   |=  $:  host=@p  =board-info  posts=(list post)  our=@p  now=@da
           is-mod=?  authed=?  dark=?  sort=?(%hot %new %top)
           is-followed=?  page=@ud  pin-set=(set post-id)
-          board-last-seen=(unit @da)
+          board-last-seen=(unit @da)  sidebar=@t
       ==
   ^-  manx
   =/  pinned-posts=(list post)
@@ -974,8 +993,30 @@
     ==
   =/  pag-base=tape  "{board-path}?sort={(trip sort)}&"
   =/  pag-nav=manx  (render-pagination pag-base page total)
+  =/  has-sidebar=?  !=('' sidebar)
+  =/  sidebar-node=manx
+    ?.  has-sidebar  ;span;
+    ;aside.board-sidebar
+      ;h4: Community Info
+      ;*  (linkify (trip sidebar))
+    ==
+  =/  mobile-sidebar=manx
+    ?.  has-sidebar  ;span;
+    ;details.mobile-sidebar
+      ;summary: community info
+      ;*  (linkify (trip sidebar))
+    ==
+  =/  posts-section=manx
+    ;div.board-main
+      ;*  (weld pinned-rows (weld post-rows ~[pag-nav]))
+    ==
+  =/  board-body=manx
+    ;div.board-layout
+      ;+  posts-section
+      ;+  sidebar-node
+    ==
   %-  page-shell
-  [(crip "furum - {(trip title.board-info)}") [header (weld pinned-rows (weld post-rows ~[pag-nav]))] `[board-path (trip title.board-info)] !authed dark]
+  [(crip "furum - {(trip title.board-info)}") [header mobile-sidebar board-body ~] `[board-path (trip title.board-info)] !authed dark]
 ::
 ::  POST DETAIL PAGE: post with comments
 ::
@@ -1361,7 +1402,7 @@
 ::  MODERATION PANEL
 ::
 ++  render-mod
-  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=?]
+  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -1425,10 +1466,22 @@
       ;br;
       ;input.btn(type "submit", value "set role");
     ==
+  =/  sidebar-section=manx
+    ;div
+      ;h4: Community Sidebar
+      ;p.me: This text appears in the sidebar on the board page. URLs will be linked automatically. Leave empty to hide.
+      ;form(method "post", action "{board-path}/sidebar")
+        ;textarea(name "sidebar", rows "6", cols "60"): {(trip sidebar)}
+        ;br;
+        ;input.btn(type "submit", value "save sidebar");
+      ==
+      ;hr;
+    ==
   =/  mod-content=marl
     :~  ;h3: Moderate {(trip title.board-info)}
         ;p.me: Default role: {(trip (role-to-text default-role.board-info))}
         pub-section
+        sidebar-section
         ;h4: Set User Role
         role-form
         ;hr;

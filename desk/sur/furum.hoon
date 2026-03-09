@@ -63,6 +63,7 @@
       comments=(map post-id (map comment-id comment))
       next-comment-ids=(map post-id comment-id)
       pinned=(set post-id)
+      sidebar=@t
   ==
 ::
 ::  registry directory entry
@@ -84,6 +85,7 @@
       posts=(map post-id post)
       comments=(map post-id (map comment-id comment))
       pinned=(set post-id)
+      sidebar=@t
   ==
 ::
 ::  actions: pokes to a board host
@@ -106,6 +108,8 @@
       [%set-public name=board-name public=?]
       ::  pinning
       [%pin-post name=board-name id=post-id pinned=?]
+      ::  sidebar
+      [%set-sidebar name=board-name sidebar=@t]
       ::  subscriptions
       [%resub host=@p name=board-name]
       ::  following
@@ -134,7 +138,7 @@
 ::  updates: subscription facts from a board host
 ::
 +$  update
-  $%  [%initial info=board-info roles=(map @p role) posts=(list post) comments=(map post-id (map comment-id comment)) pinned=(set post-id)]
+  $%  [%initial info=board-info roles=(map @p role) posts=(list post) comments=(map post-id (map comment-id comment)) pinned=(set post-id) sidebar=@t]
       [%new-post =post]
       [%delete-post id=post-id]
       [%edit-post id=post-id title=@t body=(unit @t)]
@@ -144,6 +148,7 @@
       [%role-update who=@p role=(unit role)]
       [%board-info-update info=board-info]
       [%pin-update id=post-id pinned=?]
+      [%sidebar-update sidebar=@t]
   ==
 ::
 ::  registry updates: subscription facts from the registry
