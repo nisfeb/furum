@@ -413,7 +413,7 @@
                 =([%icon ~] path)
             ==
         ==
-      (handle-get eyre-id path %.n)
+      (handle-get eyre-id path %.n args)
     ?:  ?&  =('GET' method.request.req)
             =([%about ~] path)
         ==
@@ -429,7 +429,7 @@
         =/  brd  (~(get by boards) name)
         ?.  ?&(?=(^ brd) public.info.u.brd)
           (send-html eyre-id 403 (render-error:fl "not authenticated" %.n))
-        (handle-public-get eyre-id path)
+        (handle-public-get eyre-id path args)
       (send-html eyre-id 403 (render-error:fl "not authenticated" %.n))
     ?.  authenticated.req
       (send-html eyre-id 403 (render-error:fl "not authenticated" %.n))
@@ -437,13 +437,13 @@
     =/  dark=?  (~(has in dark-mode) our.bowl)
     ::  route based on method and path
     ?:  =('GET' method.request.req)
-      (handle-get eyre-id path dark)
+      (handle-get eyre-id path dark args)
     ?:  =('POST' method.request.req)
       (handle-post eyre-id path body.request.req header-list.request.req dark)
     (send-html eyre-id 405 (render-error:fl "method not allowed" dark))
   ::
   ++  handle-public-get
-    |=  [eyre-id=@ta path=(list @t)]
+    |=  [eyre-id=@ta path=(list @t) args=(map @t @t)]
     ^-  (quip card _this)
     ?+    path
       (send-html eyre-id 404 (render-error:fl "page not found" %.n))
@@ -455,7 +455,8 @@
       ?~  brd
         (send-html eyre-id 404 (render-error:fl "board not found" %.n))
       =/  post-list=(list post)  ~(val by posts.u.brd)
-      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n))
+      =/  srt  (parse-sort:fl args)
+      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt))
     ::  public post detail: /b/{host}/{name}/{post-id}
         [%b @ @ @ ~]
       =/  host=@p  (slav %p i.t.path)
@@ -472,7 +473,7 @@
     ==
   ::
   ++  handle-get
-    |=  [eyre-id=@ta path=(list @t) dark=?]
+    |=  [eyre-id=@ta path=(list @t) dark=? args=(map @t @t)]
     ^-  (quip card _this)
     ?+    path
       (send-html eyre-id 404 (render-error:fl "page not found" dark))
@@ -569,7 +570,8 @@
           (send-html eyre-id 404 (render-error:fl "board not found" dark))
         =/  post-list=(list post)  ~(val by posts.u.brd)
         =/  im=?  (is-mod our.bowl u.brd)
-        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark))
+        =/  srt  (parse-sort:fl args)
+        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt))
       ::  remote board (from cache, auto-subscribe if needed)
       =/  cb  (~(get by cache) [host name])
       ?~  cb
@@ -585,7 +587,8 @@
       =/  post-list=(list post)  ~(val by posts.u.cb)
       =/  mr  (~(get by my-roles) [host name])
       =/  im=?  ?~(mr %.n =(u.mr %mod))
-      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark))
+      =/  srt  (parse-sort:fl args)
+      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt))
     ::  submit form: /b/{host}/{name}/submit
         [%b @ @ %submit ~]
       =/  host=@p  (slav %p i.t.path)
@@ -844,7 +847,7 @@
   ++  send-html
     |=  [eyre-id=@ta status=@ud page=manx]
     ^-  (quip card _this)
-    =/  =response-header:http  [status ~[['content-type' 'text/html']]]
+    =/  =response-header:http  [status ~[['content-type' 'text/html'] ['cache-control' 'no-store, no-cache, must-revalidate'] ['pragma' 'no-cache']]]
     =/  data=octs  (manx-to-octs:fl page)
     :_  this
     :~  [%give %fact ~[/http-response/[eyre-id]] %http-response-header !>(response-header)]

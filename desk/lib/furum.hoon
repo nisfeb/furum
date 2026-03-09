@@ -58,6 +58,10 @@
   table.mod td, table.mod th { padding: 8px 16px; text-align: left;
                                  border-bottom: 1px solid #d0ccc4; }
   .err { color: #cc2020; padding: 20px; font-size: 16px; }
+  .sort { font-size: 14px; color: #5a7a8a; margin-bottom: 10px; }
+  .sort a { color: #8b1a1a; text-decoration: none; }
+  .sort a:hover { text-decoration: underline; }
+  .sort strong { color: #1a1a2e; }
   .tag { font-size: 14px; color: #cc2020; margin-left: 2px; }
   .dark-toggle { float: right; font-size: 15px; }
   .dark-toggle button { background: none; border: none; cursor: pointer;
@@ -82,6 +86,9 @@
   body.dark .btn:hover { background: #a01818; }
   body.dark table.mod td, body.dark table.mod th { border-bottom-color: #1e2838; }
   body.dark .err { color: #cc2020; }
+  body.dark .sort { color: #4a6a7a; }
+  body.dark .sort a { color: #5a8a9a; }
+  body.dark .sort strong { color: #b8b8c8; }
   body.dark hr { border-color: #1e2838; }
   '''
 ::
@@ -190,12 +197,87 @@
 ::
 ::  sort posts by creation time (newest first)
 ::
-++  sort-posts
+++  sort-posts-by-new
   |=  posts=(list post)
   ^-  (list post)
   %+  sort  posts
   |=  [a=post b=post]
   (gth created.a created.b)
+::
+::  sort posts by net votes descending, tiebreak newest
+::
+++  sort-posts-by-top
+  |=  posts=(list post)
+  ^-  (list post)
+  %+  sort  posts
+  |=  [a=post b=post]
+  =/  va=@ud
+    =/  up  ~(wyt in up-votes.a)
+    =/  dn  ~(wyt in down-votes.a)
+    ?:((gte up dn) (sub up dn) 0)
+  =/  vb=@ud
+    =/  up  ~(wyt in up-votes.b)
+    =/  dn  ~(wyt in down-votes.b)
+    ?:((gte up dn) (sub up dn) 0)
+  ?:  =(va vb)
+    (gth created.a created.b)
+  (gth va vb)
+::
+::  HN-style score: (votes) / (hours_since + 2)^2
+::  uses @rs single-precision float
+::
+++  score-post
+  |=  [now=@da =post]
+  ^-  @rs
+  =/  up=@ud  ~(wyt in up-votes.post)
+  =/  dn=@ud  ~(wyt in down-votes.post)
+  =/  net=@ud  ?:((gte up dn) (sub up dn) 0)
+  =/  votes=@rs  (sun:rs net)
+  ::  hours since creation
+  =/  age=@dr  ?:((gth now created.post) (sub now created.post) *@dr)
+  =/  parts=tarp  (yell age)
+  =/  total-hours=@ud  (add (mul d.parts 24) h.parts)
+  =/  hours-plus=@rs  (add:rs (sun:rs total-hours) (sun:rs 2))
+  ::  denominator = (hours+2)^2
+  =/  denom=@rs  (mul:rs hours-plus hours-plus)
+  ::  avoid division by zero
+  ?:  =(denom .0)
+    votes
+  (div:rs votes denom)
+::
+::  sort posts by HN-style hot score descending
+::
+++  sort-posts-by-hot
+  |=  [now=@da posts=(list post)]
+  ^-  (list post)
+  %+  sort  posts
+  |=  [a=post b=post]
+  =/  sa=@rs  (score-post now a)
+  =/  sb=@rs  (score-post now b)
+  (gth:rs sa sb)
+::
+::  dispatch to sort function by mode
+::
+++  sort-posts-dispatch
+  |=  [mode=?(%hot %new %top) now=@da posts=(list post)]
+  ^-  (list post)
+  ?-  mode
+    %hot  (sort-posts-by-hot now posts)
+    %new  (sort-posts-by-new posts)
+    %top  (sort-posts-by-top posts)
+  ==
+::
+::  parse sort param from query string
+::
+++  parse-sort
+  |=  args=(map @t @t)
+  ^-  ?(%hot %new %top)
+  =/  raw=@t  (~(gut by args) 'sort' 'hot')
+  ?+  raw  %hot
+    %'hot'  %hot
+    %'new'  %new
+    %'top'  %top
+  ==
 ::
 ::  flatten comments into depth-ordered list for rendering
 ::  returns (list [depth=@ud =comment])
@@ -376,9 +458,9 @@
 ::  BOARD PAGE: list of posts
 ::
 ++  render-board
-  |=  [host=@p =board-info posts=(list post) our=@p now=@da is-mod=? authed=? dark=?]
+  |=  [host=@p =board-info posts=(list post) our=@p now=@da is-mod=? authed=? dark=? sort=?(%hot %new %top)]
   ^-  manx
-  =/  sorted  (sort-posts posts)
+  =/  sorted  (sort-posts-dispatch sort now posts)
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
   =/  mod-link=manx
@@ -393,11 +475,33 @@
       ;a(href "{board-path}/submit"): submit post
       ;+  mod-link
     ==
+  =/  sort-hot=manx
+    ?:  =(sort %hot)
+      ;strong: hot
+    ;a(href "{board-path}?sort=hot"): hot
+  =/  sort-new=manx
+    ?:  =(sort %new)
+      ;strong: new
+    ;a(href "{board-path}?sort=new"): new
+  =/  sort-top=manx
+    ?:  =(sort %top)
+      ;strong: top
+    ;a(href "{board-path}?sort=top"): top
+  =/  sort-bar=manx
+    ;div.sort
+      ;span: sort:
+      ;+  sort-hot
+      ;+  ;/(" | ")
+      ;+  sort-new
+      ;+  ;/(" | ")
+      ;+  sort-top
+    ==
   =/  header=manx
     ;div
       ;h3: {(trip title.board-info)}
       ;p.me: {(trip description.board-info)}
       ;+  nav-section
+      ;+  sort-bar
     ==
   =/  post-rows=marl
     ?~  sorted
