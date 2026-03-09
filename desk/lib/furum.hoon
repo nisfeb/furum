@@ -1157,6 +1157,91 @@
     dark
   ==
 ::
+::  SHARE TARGET PAGE: receive content from OS share sheet
+::
+++  render-share
+  |=  [all-boards=(list [@p board-name]) share-title=@t share-url=@t share-text=@t dark=?]
+  ^-  manx
+  =/  script-node=manx
+    [[%script ~] [[[%$ [%$ (trip upload-js)]~] ~] ~]]
+  ::  build JS to update form action when board selection changes
+  =/  board-js=cord
+    'document.getElementById("board-sel").addEventListener("change",function(){document.getElementById("share-form").action=this.value+"/submit";})'
+  =/  board-script=manx
+    [[%script ~] [[[%$ [%$ (trip board-js)]~] ~] ~]]
+  ::  if share-text contains a URL and share-url is empty, use text as url
+  =/  effective-url=@t
+    ?:  !=('' share-url)  share-url
+    ?:  ?|  =((find "https://" (trip share-text)) `0)
+            =((find "http://" (trip share-text)) `0)
+        ==
+      share-text
+    ''
+  =/  effective-body=@t
+    ?:  =(effective-url share-text)  ''
+    share-text
+  =/  board-options=marl
+    ?~  all-boards
+      :~  ;option(value "", disabled ""): no boards available
+      ==
+    %+  turn  all-boards
+    |=  [host=@p name=board-name]
+    ^-  manx
+    =/  board-path=tape
+      "/apps/furum/b/{(scow %p host)}/{(trip name)}"
+    ;option(value board-path): {(trip name)} ({(scow %p host)})
+  =/  first-action=tape
+    ?~  all-boards  ""
+    =/  [fh=@p fn=board-name]  i.all-boards
+    "/apps/furum/b/{(scow %p fh)}/{(trip fn)}/submit"
+  %-  page-shell
+  :*  'furum - share'
+    ^-  marl
+    :~
+      ;h3: Share to furum
+      ;div
+        ;label: board
+        ;br;
+        ;select#board-sel
+          ;*  board-options
+        ==
+      ==
+      ;br;
+      ;form#share-form(method "post", action first-action)
+        ;div
+          ;label: title
+          ;br;
+          ;input(type "text", name "title", required "", value (trip share-title));
+        ==
+        ;br;
+        ;div
+          ;label: url (optional)
+          ;br;
+          ;input(type "url", name "url", value (trip effective-url));
+        ==
+        ;div.upload-section(data-mode "url")
+          ;label: or upload an image:
+          ;input(type "file", accept "image/*");
+          ;button.upload-btn(type "button"): upload
+          ;span.upload-status;
+        ==
+        ;br;
+        ;div
+          ;label: text (optional)
+          ;br;
+          ;textarea(name "body"): {(trip effective-body)}
+        ==
+        ;br;
+        ;input.btn(type "submit", value "share");
+      ==
+      board-script
+      script-node
+    ==
+    ~
+    %.n
+    dark
+  ==
+::
 ::  EDIT POST FORM
 ::
 ++  render-edit-post

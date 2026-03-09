@@ -603,7 +603,9 @@
           '"display":"standalone",'
           '"background_color":"#f6f6ef",'
           '"theme_color":"#cc2020",'
-          '"icons":[{"src":"/apps/furum/icon","sizes":"200x200","type":"image/jpeg"}]}'
+          '"icons":[{"src":"/apps/furum/icon","sizes":"200x200","type":"image/jpeg"}],'
+          '"share_target":{"action":"/apps/furum/share","method":"GET",'
+          '"params":{"title":"title","text":"text","url":"url"}}}'
           ~
         ==
       =/  =response-header:http  [200 ~[['content-type' 'application/manifest+json']]]
@@ -648,6 +650,18 @@
           ['publicUrlBase' s+(get-str conf-json ~['storage-update' 'configuration' 'publicUrlBase'])]
           ['service' s+(get-str conf-json ~['storage-update' 'configuration' 'service'])]
       ==
+    ::  share target: receive shared content from OS share sheet
+        [%share ~]
+      =/  share-title=@t  (~(gut by args) 'title' '')
+      =/  share-text=@t  (~(gut by args) 'text' '')
+      =/  share-url=@t  (~(gut by args) 'url' '')
+      ::  build list of boards user can post to: own boards + followed
+      =/  own=(list [@p board-name])
+        (turn ~(tap by boards) |=([n=board-name b=board] [our.bowl n]))
+      =/  fol=(list [@p board-name])  ~(tap in followed)
+      =/  all-boards=(list [@p board-name])
+        (weld own fol)
+      (send-html eyre-id 200 (render-share:fl all-boards share-title share-url share-text dark))
     ::  home: feed (default) or directory
         ~
       =/  home-view=@t  (~(gut by args) 'view' 'feed')
