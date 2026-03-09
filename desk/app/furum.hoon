@@ -259,6 +259,16 @@
       :~  (give-board-update name.act [%delete-post id.act])
       ==
     ::
+        %edit-post
+      =/  brd  (~(got by boards) name.act)
+      =/  =post  (~(got by posts.brd) id.act)
+      ?>  =(src.bowl author.post)
+      =/  new-pst  post(title title.act, body body.act)
+      =/  new-brd  brd(posts (~(put by posts.brd) id.act new-pst))
+      :_  this(boards (~(put by boards) name.act new-brd))
+      :~  (give-board-update name.act [%edit-post id.act title.act body.act])
+      ==
+    ::
         %new-comment
       =/  brd  (~(got by boards) name.act)
       ?>  (can-post src.bowl brd)
@@ -614,6 +624,31 @@
       ?~  cb
         (send-html eyre-id 404 (render-error:fl "board not found in cache" dark))
       (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark))
+    ::  edit post form: /b/{host}/{name}/{post-id}/edit
+        [%b @ @ @ %edit ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      =/  pid=@ud  (slav %ud i.t.t.t.path)
+      ?:  =(host our.bowl)
+        =/  brd  (~(get by boards) name)
+        ?~  brd
+          (send-html eyre-id 404 (render-error:fl "board not found" dark))
+        =/  pst  (~(get by posts.u.brd) pid)
+        ?~  pst
+          (send-html eyre-id 404 (render-error:fl "post not found" dark))
+        ?.  =(our.bowl author.u.pst)
+          (send-html eyre-id 403 (render-error:fl "only the author can edit this post" dark))
+        (send-html eyre-id 200 (render-edit-post:fl host name u.pst dark))
+      ::  remote: poke goes to remote, but edit form needs the post data from cache
+      =/  cb  (~(get by cache) [host name])
+      ?~  cb
+        (send-html eyre-id 404 (render-error:fl "board not found in cache" dark))
+      =/  pst  (~(get by posts.u.cb) pid)
+      ?~  pst
+        (send-html eyre-id 404 (render-error:fl "post not found" dark))
+      ?.  =(our.bowl author.u.pst)
+        (send-html eyre-id 403 (render-error:fl "only the author can edit this post" dark))
+      (send-html eyre-id 200 (render-edit-post:fl host name u.pst dark))
     ::  post detail: /b/{host}/{name}/{post-id}
         [%b @ @ @ ~]
       =/  host=@p  (slav %p i.t.path)
@@ -734,6 +769,19 @@
             ?:(=('' body-val) ~ `body-val)
         ==
       =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
+      ?:  =(host our.bowl)
+        =^  cards  this  (handle-action action)
+        [(weld cards redir) this]
+      [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
+    ::  edit post: POST /b/{host}/{name}/{post-id}/edit
+        [%b @ @ @ %edit ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      =/  pid=@ud  (slav %ud i.t.t.t.path)
+      =/  title-val=@t  (~(gut by form) 'title' '')
+      =/  body-val=@t  (~(gut by form) 'body' '')
+      =/  =action  [%edit-post name pid title-val ?:(=('' body-val) ~ `body-val)]
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/{(a-co:co pid)}")
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
@@ -1044,6 +1092,12 @@
         %delete-post
       =/  cb  (~(got by cache) key)
       `this(cache (~(put by cache) key cb(posts (~(del by posts.cb) id.upd))))
+    ::
+        %edit-post
+      =/  cb  (~(got by cache) key)
+      =/  pst  (~(get by posts.cb) id.upd)
+      ?~  pst  `this
+      `this(cache (~(put by cache) key cb(posts (~(put by posts.cb) id.upd u.pst(title title.upd, body body.upd)))))
     ::
         %new-comment
       =/  cb  (~(got by cache) key)

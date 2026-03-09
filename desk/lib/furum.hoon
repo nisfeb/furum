@@ -585,6 +585,12 @@
   =/  url-link=manx
     ?~  url.post  ;span;
     ;a(href (trip u.url.post)): {(trip u.url.post)}
+  =/  edit-link=manx
+    ?.  ?&(authed =(our author.post))  ;span;
+    ;span
+      ;+  ;/(" | ")
+      ;a.me(href "{post-path}/edit"): edit
+    ==
   =/  del-btn=manx
     ?.  ?&(authed ?|(=(our author.post) is-mod))  ;span;
     ;form(method "post", action "{post-path}/delete", style "display:inline")
@@ -607,6 +613,7 @@
       ;+  url-link
       ;div.me
         ;+  ;/("{(a-co:co points)} points by {(scow %p author.post)} {(time-ago now created.post)}")
+        ;+  edit-link
         ;+  del-btn
       ==
       ;+  body-section
@@ -709,6 +716,47 @@
     %.n
     dark
   ==
+::
+::  EDIT POST FORM
+::
+++  render-edit-post
+  |=  [host=@p name=board-name =post dark=?]
+  ^-  manx
+  =/  board-path=tape
+    "/apps/furum/b/{(scow %p host)}/{(trip name)}"
+  =/  post-path=tape
+    "{board-path}/{(a-co:co id.post)}"
+  =/  url-display=manx
+    ?~  url.post  ;span;
+    ;div
+      ;label: link
+      ;br;
+      ;span.me: {(trip u.url.post)}
+    ==
+  =/  edit-form=manx
+    ;form(method "post", action "{post-path}/edit")
+      ;div
+        ;label: title
+        ;br;
+        ;input(type "text", name "title", required "", value "{(trip title.post)}");
+      ==
+      ;br;
+      ;div
+        ;label: text (optional)
+        ;br;
+        ;textarea(name "body"): {?~(body.post "" (trip u.body.post))}
+      ==
+      ;br;
+      ;input.btn(type "submit", value "save");
+    ==
+  =/  content=marl
+    :~  ;h3: Edit post
+        url-display
+        ;br;
+        edit-form
+    ==
+  %-  page-shell
+  [%'furum - edit post' content `[board-path (trip name)] %.n dark]
 ::
 ::  CREATE BOARD FORM
 ::

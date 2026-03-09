@@ -96,6 +96,7 @@
       ::  content
       [%new-post name=board-name title=@t url=(unit @t) body=(unit @t)]
       [%delete-post name=board-name id=post-id]
+      [%edit-post name=board-name id=post-id title=@t body=(unit @t)]
       ::  comments
       [%new-comment name=board-name post=post-id parent=(unit comment-id) body=@t]
       [%delete-comment name=board-name post=post-id id=comment-id]
@@ -129,6 +130,7 @@
   $%  [%initial info=board-info roles=(map @p role) posts=(list post)]
       [%new-post =post]
       [%delete-post id=post-id]
+      [%edit-post id=post-id title=@t body=(unit @t)]
       [%new-comment post=post-id =comment]
       [%delete-comment post=post-id id=comment-id]
       [%vote-update target=vote-target up-votes=(set @p) down-votes=(set @p)]
