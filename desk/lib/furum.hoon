@@ -316,7 +316,7 @@
   =/  before=tape  (scag u.url-idx txt)
   =/  from=tape  (slag u.url-idx txt)
   =/  [url=tape rest=tape]  (extract-url from)
-  =/  link=manx  ;a(href url): {url}
+  =/  link=manx  ;a(href url, target "_blank", rel "noopener noreferrer"): {url}
   =/  prefix=marl  ?~(before ~ ~[;/(before)])
   (weld prefix [link (linkify rest)])
 ::
@@ -432,7 +432,7 @@
     ?:  public
       ;span.dark-toggle
         ;a(href "/apps/furum/about", style "color: #ffdede; text-decoration: none; margin-right: 16px"): I Have Urbit
-        ;a(href "https://urbit.org/overview/running-urbit", style "color: #ffdede; text-decoration: none"): Get on Urbit
+        ;a(href "https://urbit.org/overview/running-urbit", style "color: #ffdede; text-decoration: none", target "_blank", rel "noopener noreferrer"): Get on Urbit
       ==
     ;span.dark-toggle
       ;form(method "post", action "/apps/furum/dark-mode", style "display:inline")
@@ -515,6 +515,10 @@
     =/  title-href=tape
       ?^  url.post.item  (trip u.url.post.item)
       post-href
+    =/  title-link=manx
+      ?^  url.post.item
+        ;a(href title-href, target "_blank", rel "noopener noreferrer"): {(trip title.post.item)}
+      ;a(href title-href): {(trip title.post.item)}
     =/  points=@ud
       =/  up  ~(wyt in up-votes.post.item)
       =/  dn  ~(wyt in down-votes.post.item)
@@ -526,7 +530,7 @@
         ;span.rk: {(a-co:co rank)}.
         ;div
           ;span.ti
-            ;a(href title-href): {(trip title.post.item)}
+            ;+  title-link
           ==
           ;+  url-host
           ;div.me
@@ -695,6 +699,10 @@
     =/  title-href=tape
       ?^  url.post  (trip u.url.post)
       post-href
+    =/  title-link=manx
+      ?^  url.post
+        ;a(href title-href, target "_blank", rel "noopener noreferrer"): {(trip title.post)}
+      ;a(href title-href): {(trip title.post)}
     =/  vote-btn=manx
       ?.  authed  ;span;
       ;form(method "post", action "{board-path}/vote", style "display:inline")
@@ -716,7 +724,7 @@
       ;+  vote-btn
       ;div
         ;span.ti
-          ;a(href title-href): {(trip title.post)}
+          ;+  title-link
         ==
         ;+  url-host
         ;div.me
@@ -762,7 +770,7 @@
     ==
   =/  url-link=manx
     ?~  url.post  ;span;
-    ;a(href (trip u.url.post)): {(trip u.url.post)}
+    ;a(href (trip u.url.post), target "_blank", rel "noopener noreferrer"): {(trip u.url.post)}
   =/  edit-link=manx
     ?.  ?&(authed =(our author.post))  ;span;
     ;span
@@ -1228,7 +1236,7 @@
         ;h3: What is furum?
         ;p
           ;+  ;/("furum is a decentralized forum that runs on ")
-          ;a(href "https://urbit.org"): Urbit
+          ;a(href "https://urbit.org", target "_blank", rel "noopener noreferrer"): Urbit
           ;+  ;/(", a peer-to-peer computing network. Think Reddit or Hacker News, but every board is hosted on someone's personal server — no corporation in the middle.")
         ==
         ;h4: Why is this different?
@@ -1249,7 +1257,7 @@
         ;ol
           ;li
             ;+  ;/("Make sure your ship is running and you can access the dojo (the command line in ")
-            ;a(href "https://port.urbit.org"): Port
+            ;a(href "https://port.urbit.org", target "_blank", rel "noopener noreferrer"): Port
             ;+  ;/(", or your terminal).")
           ==
           ;li
@@ -1262,7 +1270,7 @@
         ;ol
           ;li
             ;+  ;/("Log in to your ship at ")
-            ;a(href "https://tlon.network"): tlon.network
+            ;a(href "https://tlon.network", target "_blank", rel "noopener noreferrer"): tlon.network
           ==
           ;li: Open the Landscape app browser and search for furum, or use the dojo
           ;li
@@ -1275,7 +1283,7 @@
         ;h4: Don't have Urbit yet?
         ;p
           ;+  ;/("Urbit is a personal server you own and control. Get started at ")
-          ;a(href "https://urbit.org/overview/running-urbit"): urbit.org
+          ;a(href "https://urbit.org/overview/running-urbit", target "_blank", rel "noopener noreferrer"): urbit.org
           ;+  ;/(".")
         ==
       ==
