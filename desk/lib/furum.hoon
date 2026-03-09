@@ -279,6 +279,55 @@
     %'top'  %top
   ==
 ::
+::  linkify: convert URLs in text to clickable links
+::  splits a tape into marl of text nodes and anchor elements
+::
+++  extract-url
+  |=  text=tape
+  ^-  [url=tape rest=tape]
+  =/  url=tape  ~
+  |-
+  ?~  text  [(flop url) ~]
+  ?:  ?|  =(i.text ' ')
+          =(i.text '\0a')
+          =(i.text '\09')
+          =(i.text '<')
+          =(i.text '>')
+      ==
+    [(flop url) text]
+  $(text t.text, url [i.text url])
+::
+++  linkify
+  |=  text=tape
+  ^-  marl
+  =/  txt=tape  text
+  ::  find first URL
+  =/  https-idx  (find "https://" txt)
+  =/  http-idx   (find "http://" txt)
+  =/  url-idx=(unit @)
+    ?~  https-idx  http-idx
+    ?~  http-idx   https-idx
+    `(min u.https-idx u.http-idx)
+  ?~  url-idx
+    ::  no URLs, return as text node
+    ?~  txt  ~
+    ~[;/(txt)]
+  ::  split: text before URL, then URL, then rest
+  =/  before=tape  (scag u.url-idx txt)
+  =/  from=tape  (slag u.url-idx txt)
+  =/  [url=tape rest=tape]  (extract-url from)
+  =/  link=manx  ;a(href url): {url}
+  =/  prefix=marl  ?~(before ~ ~[;/(before)])
+  (weld prefix [link (linkify rest)])
+::
+::  render text with linkified URLs as a div
+::
+++  linkify-div
+  |=  [cls=tape text=tape]
+  ^-  manx
+  =/  kids=marl  (linkify text)
+  [[%div ~[[%class cls]]] kids]
+::
 ::  pagination constants and helpers
 ::
 ++  per-page  30
@@ -728,7 +777,7 @@
     ==
   =/  body-section=manx
     ?~  body.post  ;span;
-    ;div.post-body: {(trip u.body.post)}
+    (linkify-div "post-body" (trip u.body.post))
   =/  comment-list=marl
     (render-flat-comments flat-comments board-path id.post our is-mod authed now)
   =/  comment-div=manx
@@ -802,7 +851,7 @@
         ;+  ;/(" {(scow %p author.c)} {(a-co:co points)} points {(time-ago now created.c)}")
         ;+  del-btn
       ==
-      ;div: {(trip body.c)}
+      ;+  (linkify-div "" (trip body.c))
       ;+  reply-section
     ==
   ==
