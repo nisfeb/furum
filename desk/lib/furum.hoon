@@ -131,6 +131,7 @@
         var key='furum/'+ts+'-'+safe;
         var ct=file.type||'application/octet-stream';
         var endpoint=cfg.endpoint||('https://s3.'+(cfg.region||'us-east-1')+'.amazonaws.com');
+        if(endpoint&&!/^https?:\/\//.test(endpoint))endpoint='https://'+endpoint;
         statusEl.textContent='uploading...';
         var purl=await presign(endpoint,cfg.bucket,key,cfg.region||'us-east-1',cfg.accessKeyId,cfg.secretAccessKey,ct);
         var xhr=new XMLHttpRequest();
