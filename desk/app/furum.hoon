@@ -487,7 +487,8 @@
         (send-html eyre-id 404 (render-error:fl "board not found" %.n))
       =/  post-list=(list post)  ~(val by posts.u.brd)
       =/  srt  (parse-sort:fl args)
-      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt %.n))
+      =/  pg  (parse-page:fl args)
+      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt %.n pg))
     ::  public post detail: /b/{host}/{name}/{post-id}
         [%b @ @ @ ~]
       =/  host=@p  (slav %p i.t.path)
@@ -567,7 +568,8 @@
           =/  cb  (~(get by cache) [host name])
           ?~  cb  ~
           (turn ~(val by posts.u.cb) |=(p=post [host name p]))
-        (send-html eyre-id 200 (render-feed:fl feed-posts our.bowl now.bowl dark))
+        =/  pg  (parse-page:fl args)
+        (send-html eyre-id 200 (render-feed:fl feed-posts our.bowl now.bowl dark pg))
       =/  entries=(list directory-entry)  ~(val by registry)
       =/  all-tags=(set @tas)
         %+  roll  entries
@@ -619,7 +621,8 @@
         =/  im=?  (is-mod our.bowl u.brd)
         =/  srt  (parse-sort:fl args)
         =/  ifl=?  (~(has in followed) [host name])
-        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt ifl))
+        =/  pg  (parse-page:fl args)
+        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt ifl pg))
       ::  remote board (from cache, auto-subscribe if needed)
       =/  cb  (~(get by cache) [host name])
       ?~  cb
@@ -637,7 +640,8 @@
       =/  im=?  ?~(mr %.n =(u.mr %mod))
       =/  srt  (parse-sort:fl args)
       =/  ifl=?  (~(has in followed) [host name])
-      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl))
+      =/  pg  (parse-page:fl args)
+      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg))
     ::  submit form: /b/{host}/{name}/submit
         [%b @ @ %submit ~]
       =/  host=@p  (slav %p i.t.path)

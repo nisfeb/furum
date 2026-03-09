@@ -279,6 +279,51 @@
     %'top'  %top
   ==
 ::
+::  pagination constants and helpers
+::
+++  per-page  30
+::
+++  parse-page
+  |=  args=(map @t @t)
+  ^-  @ud
+  =/  raw=@t  (~(gut by args) 'page' '1')
+  =/  n=(unit @ud)  ((slat %ud) raw)
+  ?~(n 1 ?:((lth u.n 1) 1 u.n))
+::
+++  paginate
+  |*  [page=@ud lst=(list)]
+  =/  total=@ud  (lent lst)
+  =/  skip=@ud  (mul (dec page) per-page)
+  =/  sliced  (scag per-page (slag skip lst))
+  [total sliced]
+::
+++  render-pagination
+  |=  [base-url=tape page=@ud total=@ud]
+  ^-  manx
+  ?:  =(total 0)  ;span;
+  =/  total-pages=@ud
+    (add (div total per-page) ?:((gth (mod total per-page) 0) 1 0))
+  ?:  (lte total-pages 1)  ;span;
+  =/  has-prev=?  (gth page 1)
+  =/  has-next=?  (lth page total-pages)
+  =/  prev-node=manx
+    ?.  has-prev  ;span;
+    ;a(href "{base-url}page={(a-co:co (dec page))}"): ← prev
+  =/  next-node=manx
+    ?.  has-next  ;span;
+    ;a(href "{base-url}page={(a-co:co (add page 1))}"): next →
+  =/  info-node=manx
+    ;span.me: page {(a-co:co page)} of {(a-co:co total-pages)}
+  ;div.sort
+    ;+  prev-node
+    ;+  ?:  ?&(has-prev has-next)
+          ;span: {" | "}
+        ;span;
+    ;+  next-node
+    ;+  ;/("  ")
+    ;+  info-node
+  ==
+::
 ::  flatten comments into depth-ordered list for rendering
 ::  returns (list [depth=@ud =comment])
 ::
@@ -383,12 +428,14 @@
 ::  HOME PAGE: board directory
 ::
 ++  render-feed
-  |=  [feed=(list [host=@p board-name=board-name =post]) our=@p now=@da dark=?]
+  |=  [feed=(list [host=@p board-name=board-name =post]) our=@p now=@da dark=? page=@ud]
   ^-  manx
   =/  sorted=(list [host=@p board-name=board-name =post])
     %+  sort  feed
     |=  [a=[host=@p board-name=board-name =post] b=[host=@p board-name=board-name =post]]
     (gth created.post.a created.post.b)
+  =/  [total=@ud paged=(list [host=@p board-name=board-name =post])]
+    (paginate page sorted)
   =/  nav=manx
     ;div
       ;h3: Feed
@@ -400,8 +447,8 @@
       ;p.me: Posts from boards you follow.
     ==
   =/  post-rows=marl
-    =/  rem  sorted
-    =/  idx=@ud  1
+    =/  rem  paged
+    =/  idx=@ud  +((mul (dec page) per-page))
     =/  acc=marl  ~
     |-
     ?~  rem
@@ -442,8 +489,9 @@
         ==
       ==
     $(rem t.rem, idx +(idx), acc [row acc])
+  =/  pag-nav=manx  (render-pagination "/apps/furum?" page total)
   %-  page-shell
-  :*  'furum'  [nav post-rows]  ~  %.n  dark  ==
+  :*  'furum'  [nav (weld post-rows ~[pag-nav])]  ~  %.n  dark  ==
 ::
 ++  render-home
   |=  [entries=(list directory-entry) view=?(%all %curated %tag) active-tag=(unit @tas) all-tags=(set @tas) is-registry=? dark=?]
@@ -523,9 +571,10 @@
 ::  BOARD PAGE: list of posts
 ::
 ++  render-board
-  |=  [host=@p =board-info posts=(list post) our=@p now=@da is-mod=? authed=? dark=? sort=?(%hot %new %top) is-followed=?]
+  |=  [host=@p =board-info posts=(list post) our=@p now=@da is-mod=? authed=? dark=? sort=?(%hot %new %top) is-followed=? page=@ud]
   ^-  manx
   =/  sorted  (sort-posts-dispatch sort now posts)
+  =/  [total=@ud paged=(list post)]  (paginate page sorted)
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
   =/  mod-link=manx
@@ -581,10 +630,11 @@
       ;+  sort-bar
     ==
   =/  post-rows=marl
-    ?~  sorted
+    ?~  paged
       :~  ;p.me: No posts yet.
       ==
-    =/  ranked  (rank-list sorted)
+    =/  offset=@ud  (mul (dec page) per-page)
+    =/  ranked  (rank-list-offset paged offset)
     %+  turn  ranked
     |=  [rank=@ud =post]
     ^-  manx
@@ -627,8 +677,10 @@
         ==
       ==
     ==
+  =/  pag-base=tape  "{board-path}?sort={(trip sort)}&"
+  =/  pag-nav=manx  (render-pagination pag-base page total)
   %-  page-shell
-  [(crip "furum - {(trip title.board-info)}") [header post-rows] `[board-path (trip title.board-info)] !authed dark]
+  [(crip "furum - {(trip title.board-info)}") [header (weld post-rows ~[pag-nav])] `[board-path (trip title.board-info)] !authed dark]
 ::
 ::  POST DETAIL PAGE: post with comments
 ::
@@ -1200,7 +1252,12 @@
 ++  rank-list
   |=  posts=(list post)
   ^-  (list [@ud post])
-  =/  idx=@ud  1
+  (rank-list-offset posts 0)
+::
+++  rank-list-offset
+  |=  [posts=(list post) offset=@ud]
+  ^-  (list [@ud post])
+  =/  idx=@ud  +(offset)
   |-
   ?~  posts  ~
   [[idx i.posts] $(posts t.posts, idx +(idx))]
