@@ -17,6 +17,7 @@
       host=@p
       created=@da
       default-role=role
+      public=?
   ==
 ::
 ::  a post
@@ -78,6 +79,7 @@
 ::
 +$  cached-board
   $:  info=board-info
+      roles=(map @p role)
       posts=(map post-id post)
       comments=(map post-id (map comment-id comment))
   ==
@@ -97,6 +99,10 @@
       ::  comments
       [%new-comment name=board-name post=post-id parent=(unit comment-id) body=@t]
       [%delete-comment name=board-name post=post-id id=comment-id]
+      ::  board settings
+      [%set-public name=board-name public=?]
+      ::  subscriptions
+      [%resub host=@p name=board-name]
       ::  preferences
       [%toggle-dark-mode ~]
       ::  votes
@@ -120,7 +126,7 @@
 ::  updates: subscription facts from a board host
 ::
 +$  update
-  $%  [%initial info=board-info posts=(list post)]
+  $%  [%initial info=board-info roles=(map @p role) posts=(list post)]
       [%new-post =post]
       [%delete-post id=post-id]
       [%new-comment post=post-id =comment]
