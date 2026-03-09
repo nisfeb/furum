@@ -34,6 +34,7 @@
 +$  versioned-state
   $%  state-2
       state-3
+      state-4
   ==
 ::
 +$  state-2
@@ -56,6 +57,18 @@
       dark-mode=(set @p)
       registry-admins=(set @p)
       my-roles=(map [@p board-name] role)
+  ==
+::
++$  state-4
+  $:  %4
+      registry=(map board-name directory-entry)
+      boards=(map board-name board)
+      cache=(map [@p board-name] cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
   ==
 ::
 +$  card  card:agent:gall
@@ -105,7 +118,7 @@
 --
 ::
 %-  agent:dbug
-=|  state-3
+=|  state-4
 =*  state  -
 ^-  agent:gall
 |_  =bowl:gall
@@ -141,9 +154,11 @@
       ^-  cached-board
       =/  ni=board-info  [name.info.oc title.info.oc description.info.oc host.info.oc created.info.oc default-role.info.oc %.n]
       [ni roles.oc posts.oc comments.oc]
-    `this(state [%3 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old])
+    `this(state [%4 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
   ::
-    %3  `this(state old)
+    %3  `this(state [%4 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name])])
+  ::
+    %4  `this(state old)
   ==
 ::
 ++  on-poke
@@ -317,6 +332,12 @@
           [%pass /board/(scot %p host.act)/[name.act] %agent [host.act %furum] %watch /board/[name.act]]
       ==
     ::
+        %follow-board
+      `this(followed (~(put in followed) [host.act name.act]))
+    ::
+        %unfollow-board
+      `this(followed (~(del in followed) [host.act name.act]))
+    ::
         %toggle-dark-mode
       ?:  (~(has in dark-mode) src.bowl)
         `this(dark-mode (~(del in dark-mode) src.bowl))
@@ -466,7 +487,7 @@
         (send-html eyre-id 404 (render-error:fl "board not found" %.n))
       =/  post-list=(list post)  ~(val by posts.u.brd)
       =/  srt  (parse-sort:fl args)
-      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt))
+      (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl %.n %.n %.n srt %.n))
     ::  public post detail: /b/{host}/{name}/{post-id}
         [%b @ @ @ ~]
       =/  host=@p  (slav %p i.t.path)
@@ -529,8 +550,24 @@
           [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
           [%give %kick ~[/http-response/[eyre-id]] ~]
       ==
-    ::  home: board directory (all boards)
+    ::  home: feed (default) or directory
         ~
+      =/  home-view=@t  (~(gut by args) 'view' 'feed')
+      ?:  =('feed' home-view)
+        ::  collect posts from all followed boards
+        =/  feed-posts=(list [host=@p board-name=board-name =post])
+          %-  zing
+          %+  turn  ~(tap in followed)
+          |=  [host=@p name=board-name]
+          ^-  (list [host=@p board-name=board-name =post])
+          ?:  =(host our.bowl)
+            =/  brd  (~(get by boards) name)
+            ?~  brd  ~
+            (turn ~(val by posts.u.brd) |=(p=post [host name p]))
+          =/  cb  (~(get by cache) [host name])
+          ?~  cb  ~
+          (turn ~(val by posts.u.cb) |=(p=post [host name p]))
+        (send-html eyre-id 200 (render-feed:fl feed-posts our.bowl now.bowl dark))
       =/  entries=(list directory-entry)  ~(val by registry)
       =/  all-tags=(set @tas)
         %+  roll  entries
@@ -581,7 +618,8 @@
         =/  post-list=(list post)  ~(val by posts.u.brd)
         =/  im=?  (is-mod our.bowl u.brd)
         =/  srt  (parse-sort:fl args)
-        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt))
+        =/  ifl=?  (~(has in followed) [host name])
+        (send-html eyre-id 200 (render-board:fl host info.u.brd post-list our.bowl now.bowl im %.y dark srt ifl))
       ::  remote board (from cache, auto-subscribe if needed)
       =/  cb  (~(get by cache) [host name])
       ?~  cb
@@ -598,7 +636,8 @@
       =/  mr  (~(get by my-roles) [host name])
       =/  im=?  ?~(mr %.n =(u.mr %mod))
       =/  srt  (parse-sort:fl args)
-      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt))
+      =/  ifl=?  (~(has in followed) [host name])
+      (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl))
     ::  submit form: /b/{host}/{name}/submit
         [%b @ @ %submit ~]
       =/  host=@p  (slav %p i.t.path)
@@ -825,6 +864,20 @@
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
       [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
+    ::  follow board: POST /b/{host}/{name}/follow
+        [%b @ @ %follow ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      =^  cards  this  (handle-action [%follow-board host name])
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
+      [(weld cards redir) this]
+    ::  unfollow board: POST /b/{host}/{name}/unfollow
+        [%b @ @ %unfollow ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      =^  cards  this  (handle-action [%unfollow-board host name])
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
+      [(weld cards redir) this]
     ::  vote: POST /b/{host}/{name}/vote
         [%b @ @ %vote ~]
       =/  host=@p  (slav %p i.t.path)

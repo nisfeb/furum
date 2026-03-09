@@ -104,6 +104,9 @@
       [%set-public name=board-name public=?]
       ::  subscriptions
       [%resub host=@p name=board-name]
+      ::  following
+      [%follow-board host=@p name=board-name]
+      [%unfollow-board host=@p name=board-name]
       ::  preferences
       [%toggle-dark-mode ~]
       ::  votes

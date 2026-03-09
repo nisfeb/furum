@@ -382,6 +382,69 @@
 ::
 ::  HOME PAGE: board directory
 ::
+++  render-feed
+  |=  [feed=(list [host=@p board-name=board-name =post]) our=@p now=@da dark=?]
+  ^-  manx
+  =/  sorted=(list [host=@p board-name=board-name =post])
+    %+  sort  feed
+    |=  [a=[host=@p board-name=board-name =post] b=[host=@p board-name=board-name =post]]
+    (gth created.post.a created.post.b)
+  =/  nav=manx
+    ;div
+      ;h3: Feed
+      ;p
+        ;strong: feed
+        ;+  ;/(" | ")
+        ;a(href "/apps/furum?view=directory"): directory
+      ==
+      ;p.me: Posts from boards you follow.
+    ==
+  =/  post-rows=marl
+    =/  rem  sorted
+    =/  idx=@ud  1
+    =/  acc=marl  ~
+    |-
+    ?~  rem
+      ?~  acc
+        :~  ;p.me: No posts yet. Follow some boards to see their posts here.
+        ==
+      (flop acc)
+    =/  rank=@ud  idx
+    =/  item  i.rem
+    =/  row=manx
+    ^-  manx
+    =/  board-path=tape
+      "/apps/furum/b/{(scow %p host.item)}/{(trip board-name.item)}"
+    =/  post-href=tape  "{board-path}/{(a-co:co id.post.item)}"
+    =/  title-href=tape
+      ?^  url.post.item  (trip u.url.post.item)
+      post-href
+    =/  points=@ud
+      =/  up  ~(wyt in up-votes.post.item)
+      =/  dn  ~(wyt in down-votes.post.item)
+      ?:((gte up dn) (sub up dn) 0)
+    =/  url-host=manx
+      ?~  url.post.item  ;span;
+      ;span.host: ({(trip u.url.post.item)})
+      ;div.rw
+        ;span.rk: {(a-co:co rank)}.
+        ;div
+          ;span.ti
+            ;a(href title-href): {(trip title.post.item)}
+          ==
+          ;+  url-host
+          ;div.me
+            ;+  ;/("{(a-co:co points)} pts by {(scow %p author.post.item)} {(time-ago now created.post.item)} to ")
+            ;a(href board-path): {(trip board-name.item)}
+            ;+  ;/(" | ")
+            ;a(href post-href): {(a-co:co comment-count.post.item)} comments
+          ==
+        ==
+      ==
+    $(rem t.rem, idx +(idx), acc [row acc])
+  %-  page-shell
+  :*  'furum'  [nav post-rows]  ~  %.n  dark  ==
+::
 ++  render-home
   |=  [entries=(list directory-entry) view=?(%all %curated %tag) active-tag=(unit @tas) all-tags=(set @tas) is-registry=? dark=?]
   ^-  manx
@@ -407,7 +470,9 @@
     ;div
       ;h3: Board Directory
       ;p
-        ;a(href "/apps/furum"): all
+        ;a(href "/apps/furum"): feed
+        ;+  ;/(" | ")
+        ;a(href "/apps/furum?view=directory"): all
         ;+  ;/(" | ")
         ;a(href "/apps/furum/curated"): curated
         ;*  tag-links
@@ -458,7 +523,7 @@
 ::  BOARD PAGE: list of posts
 ::
 ++  render-board
-  |=  [host=@p =board-info posts=(list post) our=@p now=@da is-mod=? authed=? dark=? sort=?(%hot %new %top)]
+  |=  [host=@p =board-info posts=(list post) our=@p now=@da is-mod=? authed=? dark=? sort=?(%hot %new %top) is-followed=?]
   ^-  manx
   =/  sorted  (sort-posts-dispatch sort now posts)
   =/  board-path=tape
@@ -469,11 +534,23 @@
       ;+  ;/("  |  ")
       ;a(href "{board-path}/mod"): moderate
     ==
+  =/  follow-btn=manx
+    ?.  authed  ;span;
+    ?:  is-followed
+      ;form(method "post", action "{board-path}/unfollow", style "display:inline")
+        ;+  ;/("  |  ")
+        ;button.va(type "submit"): unfollow
+      ==
+    ;form(method "post", action "{board-path}/follow", style "display:inline")
+      ;+  ;/("  |  ")
+      ;button.va(type "submit"): follow
+    ==
   =/  nav-section=manx
     ?.  authed  ;p;
     ;p
       ;a(href "{board-path}/submit"): submit post
       ;+  mod-link
+      ;+  follow-btn
     ==
   =/  sort-hot=manx
     ?:  =(sort %hot)
