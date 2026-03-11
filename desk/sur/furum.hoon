@@ -134,6 +134,8 @@
       [%set-payment name=board-name payment=(unit payment-config)]
       [%submit-payment name=board-name mint=@t tokens=@t]
       [%melt-to-lightning name=board-name mint=@t invoice=@t]
+      [%revoke-paid name=board-name who=@p]
+      [%clear-wallet name=board-name]
       ::  subscriptions
       [%resub host=@p name=board-name]
       ::  following

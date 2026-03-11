@@ -144,6 +144,15 @@
   .payment-form select, .payment-form input[type="text"], .payment-form textarea {
     width: 100%; max-width: 500px; padding: 6px; font-size: 14px; }
   #token-summary { font-size: 13px; color: #666; margin-top: 4px; }
+  #qr-scan-btn { margin-top: 8px; cursor: pointer; }
+  #qr-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,0.9); z-index:9999; flex-direction:column;
+    align-items:center; justify-content:center; }
+  #qr-overlay.active { display:flex; }
+  #qr-video { max-width:90%; max-height:60vh; border:3px solid #fff; border-radius:8px; }
+  #qr-status { color:#fff; margin-top:12px; font-size:16px; }
+  #qr-close-btn { margin-top:12px; padding:8px 24px; font-size:16px; cursor:pointer;
+    background:#fff; border:1px solid #ccc; border-radius:4px; }
   .wallet-entry { background: #f0f9ff; border: 1px solid #bde; padding: 12px; border-radius: 6px; margin: 8px 0; }
   body.dark .wallet-entry { background: #1a2a3a; border-color: #345; }
   .wallet-entry p { margin: 4px 0; }
@@ -1503,6 +1512,181 @@
       });
     })();
     '''
+  =/  qr-scan-js=cord
+    '''
+    (function(){
+      var btn=document.getElementById('qr-scan-btn');
+      if(!btn)return;
+      var overlay=document.getElementById('qr-overlay');
+      var video=document.getElementById('qr-video');
+      var status=document.getElementById('qr-status');
+      var closeBtn=document.getElementById('qr-close-btn');
+      var scanning=false;
+      var stream=null;
+      var canvas=document.createElement('canvas');
+      var ctx=canvas.getContext('2d',{willReadFrequently:true});
+      var frames=0;
+      var urDecoder=null;
+      var bcurLoaded=null;
+      var seenParts={};
+      function loadLibs(){
+        return new Promise(function(resolve,reject){
+          if(typeof jsQR!=='undefined'&&bcurLoaded){resolve();return;}
+          var pending=0;
+          if(typeof jsQR==='undefined'){
+            pending++;
+            var s=document.createElement('script');
+            s.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+            s.onload=function(){pending--;if(pending===0)resolve();};
+            s.onerror=function(){reject('Failed to load QR scanner');};
+            document.head.appendChild(s);
+          }
+          if(!bcurLoaded){
+            pending++;
+            import('https://esm.sh/@ngraveio/bc-ur').then(function(m){
+              bcurLoaded=m;
+              pending--;if(pending===0)resolve();
+            }).catch(function(){
+              bcurLoaded={unavailable:true};
+              pending--;if(pending===0)resolve();
+            });
+          }
+          if(pending===0)resolve();
+        });
+      }
+      btn.addEventListener('click',function(){
+        if(scanning)return stopScan();
+        btn.textContent='Loading scanner...';
+        btn.disabled=true;
+        loadLibs().then(function(){
+          btn.textContent='Scan QR Code';
+          btn.disabled=false;
+          startScan();
+        }).catch(function(e){
+          btn.textContent='Scan QR Code';
+          btn.disabled=false;
+          alert(e);
+        });
+      });
+      closeBtn.addEventListener('click',stopScan);
+      function startScan(){
+        if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+          alert('Camera access requires HTTPS. Please access your ship over HTTPS to use the QR scanner.');
+          return;
+        }
+        frames=0;
+        urDecoder=null;
+        seenParts={};
+        navigator.mediaDevices.getUserMedia({
+          video:{facingMode:'environment'}
+        }).then(function(s){
+          stream=s;
+          video.srcObject=s;
+          scanning=true;
+          overlay.classList.add('active');
+          status.textContent='Point camera at Cashu QR code...';
+          video.onloadedmetadata=function(){video.play().then(function(){requestAnimationFrame(tick);}).catch(function(){});};
+        }).catch(function(e){
+          alert('Camera access denied: '+e.message);
+        });
+      }
+      function stopScan(){
+        scanning=false;
+        overlay.classList.remove('active');
+        if(stream){
+          stream.getTracks().forEach(function(t){t.stop();});
+          stream=null;
+        }
+      }
+      function handleResult(d){
+        var ta=document.getElementById('token-input');
+        ta.value=d;
+        ta.dispatchEvent(new Event('input'));
+        stopScan();
+      }
+      function tick(){
+        if(!scanning)return;
+        if(video.readyState===video.HAVE_ENOUGH_DATA){
+          frames++;
+          canvas.width=video.videoWidth;
+          canvas.height=video.videoHeight;
+          ctx.drawImage(video,0,0,canvas.width,canvas.height);
+          var img=ctx.getImageData(0,0,canvas.width,canvas.height);
+          var code=jsQR(img.data,canvas.width,canvas.height,{inversionAttempts:'dontInvert'});
+          if(code&&code.data){
+            var d=code.data.trim();
+            if(d.startsWith('cashuA')||d.startsWith('cashuB')||d.startsWith('{')){
+              handleResult(d);
+              return;
+            }
+            if(d.toLowerCase().startsWith('ur:')&&bcurLoaded&&!bcurLoaded.unavailable){
+              try{
+                if(!urDecoder){
+                  var D=bcurLoaded.URDecoder;
+                  if(!D){status.textContent='URDecoder not found in module. Keys: '+Object.keys(bcurLoaded).join(',');return;}
+                  urDecoder=new D();
+                }
+                if(urDecoder){
+                  var part=d.toLowerCase();
+                  if(!seenParts[part]){
+                    seenParts[part]=true;
+                    urDecoder.receivePart(part);
+                  }
+                  var pct=Math.round(urDecoder.estimatedPercentComplete()*100);
+                  var exp=urDecoder.expectedPartCount?urDecoder.expectedPartCount():0;
+                  var rcv=Object.keys(seenParts).length;
+                  status.textContent='UR frames: '+rcv+'/'+exp+' ('+pct+'%) complete='+urDecoder.isComplete();
+                  if(urDecoder.isComplete()){
+                    if(urDecoder.isSuccess()){
+                      var ur=urDecoder.resultUR();
+                      var cbor=ur.cbor;
+                      var arr=cbor instanceof Uint8Array?cbor:new Uint8Array(cbor);
+                      var payload=arr;
+                      if(arr.length>0&&(arr[0]>>5)===2){
+                        var add=arr[0]&0x1f,off=1,len=add;
+                        if(add===24){len=arr[1];off=2;}
+                        else if(add===25){len=(arr[1]<<8)|arr[2];off=3;}
+                        else if(add===26){len=(arr[1]<<24)|(arr[2]<<16)|(arr[3]<<8)|arr[4];off=5;}
+                        payload=arr.slice(off,off+len);
+                      }
+                      var txt='';
+                      try{txt=new TextDecoder().decode(payload);}catch(e){}
+                      status.textContent='UR decoded: '+payload.length+'b, starts: '+txt.substring(0,20);
+                      if(txt.startsWith('cashuA')||txt.startsWith('cashuB')||txt.startsWith('{')){
+                        handleResult(txt);
+                      }else{
+                        var raw='';
+                        for(var bi=0;bi<payload.length;bi++)raw+=String.fromCharCode(payload[bi]);
+                        var b64=btoa(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+                        handleResult('cashuB'+b64);
+                      }
+                    }else{
+                      status.textContent='UR decode error: '+urDecoder.resultError()+'. Retrying...';
+                      urDecoder=null;
+                    }
+                  }
+                }
+              }catch(e){
+                status.textContent='UR error: '+e.message+' | '+e.stack;
+              }
+            }else if(d.toLowerCase().startsWith('ur:')){
+              status.textContent='UR QR detected but decoder unavailable. Paste token manually.';
+            }
+          }else{
+            if(frames%30===0)status.textContent='Scanning... ('+frames+' frames)';
+          }
+        }
+        requestAnimationFrame(tick);
+      }
+    })();
+    '''
+  =/  qr-scan-script=manx  [[%script ~] [[;/((trip qr-scan-js))] ~]]
+  =/  qr-overlay=manx
+    ;div(id "qr-overlay")
+      ;video(id "qr-video", playsinline "true", autoplay "true");
+      ;p(id "qr-status"): Point camera at Cashu QR code...
+      ;button(type "button", id "qr-close-btn"): Close
+    ==
   =/  paywall-content=marl
     :~  ;h3: {(trip title.board-info)}
         ;p.me: {(trip description.board-info)}
@@ -1536,10 +1720,14 @@
             ;textarea(id "token-input", rows "6", cols "60", placeholder "cashuAeyJ0b2tlbi...");
           ==
           ;p(id "token-summary");
+          ;button.btn(type "button", id "qr-scan-btn"): Scan QR Code
+          ;br;
           ;br;
           ;input.btn(type "submit", value "submit payment");
         ==
         ;script: {(trip token-js)}
+        qr-overlay
+        qr-scan-script
     ==
   %-  page-shell
   [(crip "furum - {(trip name.board-info)} - payment required") paywall-content `[board-path (trip title.board-info)] %.n dark]

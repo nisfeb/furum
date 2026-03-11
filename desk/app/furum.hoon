@@ -670,6 +670,22 @@
       :~  [%pass /iris/melt/[nonce] %arvo %i %request [%'POST' quote-url ~[['content-type' 'application/json']] `quote-octs] *outbound-config:iris]
       ==
     ::
+        %revoke-paid
+      ?>  =(src.bowl our.bowl)
+      =/  brd  (~(got by boards) name.act)
+      ?>  (is-mod src.bowl brd)
+      =/  new-brd  brd(paid (~(del by paid.brd) who.act))
+      ~&  >>>  [%revoked-paid name.act who.act]
+      `this(boards (~(put by boards) name.act new-brd))
+    ::
+        %clear-wallet
+      ?>  =(src.bowl our.bowl)
+      =/  brd  (~(got by boards) name.act)
+      ?>  (is-mod src.bowl brd)
+      =/  new-brd  brd(wallet *(map @t (list cashu-proof)))
+      ~&  >>>  [%cleared-wallet name.act]
+      `this(boards (~(put by boards) name.act new-brd))
+    ::
         %set-role
       =/  brd  (~(got by boards) name.act)
       ?>  (is-mod src.bowl brd)
@@ -1238,7 +1254,21 @@
           =.  board-seen  (~(put by board-seen) [host name] now.bowl)
           (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.cb bls sidebar.u.cb))
         ::  not paid or expired — show paywall
-        (send-html eyre-id 200 (render-paywall:fl host info.u.cb u.payment.u.cb paid-until.u.cb dark pnd))
+        ::  if pending, re-subscribe to check if payment was processed
+        =/  =response-header:http  [200 ~[['content-type' 'text/html'] ['cache-control' 'no-store, no-cache, must-revalidate'] ['pragma' 'no-cache']]]
+        =/  data=octs  (manx-to-octs:fl (render-paywall:fl host info.u.cb u.payment.u.cb paid-until.u.cb dark pnd))
+        =/  http-cards=(list card)
+          :~  [%give %fact ~[/http-response/[eyre-id]] %http-response-header !>(response-header)]
+              [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
+              [%give %kick ~[/http-response/[eyre-id]] ~]
+          ==
+        =/  resub-cards=(list card)
+          ?.  pnd  ~
+          :~  [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
+              [%pass /board/(scot %p host)/[name] %agent [host %furum] %watch /board/[name]]
+          ==
+        :_  this
+        (weld resub-cards http-cards)
       ::  no payment config — free board, show normally
       =/  post-list=(list post)  ~(val by posts.u.cb)
       =/  mr  (~(get by my-roles) [host name])
@@ -1525,10 +1555,10 @@
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
-      ::  re-subscribe so we receive %paid-update after host processes payment
+      ::  send payment to host; don't re-subscribe yet (host will kick us as unpaid)
+      ::  the pending page reload will re-subscribe after payment is processed
       =/  pay-cards=(list card)
-        :~  [%pass /board/(scot %p host)/[name] %agent [host %furum] %watch /board/[name]]
-            [%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)]
+        :~  [%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)]
         ==
       [(weld pay-cards redir) this]
     ::  set payment config: POST /b/{host}/{name}/mod/payment
@@ -1732,7 +1762,9 @@
       =/  jon  u.input-json
       ?.  ?=([%o *] jon)  ~|(%bad-input-json !!)
       =/  inputs  (~(got by p.jon) 'inputs')
-      =/  swap-body=@t  (en:json:html (build-swap-request:ca inputs (flop outputs)))
+      =/  swap-req=json  (build-swap-request:ca inputs (flop outputs))
+      =/  swap-body=@t  (en:json:html swap-req)
+      ~&  >>>  [%swap-body swap-body]
       =/  swap-octs=octs  [(met 3 swap-body) swap-body]
       =/  mint-clean=tape  (clean-mint-url:ca mint)
       =/  swap-url=@t  (crip (weld mint-clean "/v1/swap"))
@@ -2044,7 +2076,11 @@
     =/  response=response-header:http  response-header.client-response
     =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
     ?.  =(200 status-code.response)
-      ~&  >>>  [%ecash-swap-mint-rejected name.u.pending who.u.pending status-code.response]
+      =/  err-body=@t
+        ?~  body  'no body'
+        =/  raw  (trip q.u.body)
+        (crip (scag 500 raw))
+      ~&  >>>  [%ecash-swap-mint-rejected name.u.pending who.u.pending status-code.response err-body]
       =.  pending-swaps  (~(del by pending-swaps) nonce)
       `this
     ?~  body
@@ -2066,12 +2102,18 @@
         ~&  >>>  [%ecash-swap-board-gone name.u.pending]
         =.  pending-swaps  (~(del by pending-swaps) nonce)
         `this
-      ::  parse keyset response: {keys: {amount: hex_pubkey, ...}}
+      ::  parse keyset response: {keysets: [{id, unit, keys: {amount: hex_pubkey}}]}
       ?.  ?=([%o *] jon)
         ~&  >>>  [%ecash-swap-bad-keyset name.u.pending]
         =.  pending-swaps  (~(del by pending-swaps) nonce)
         `this
-      =/  keys-val  (~(get by p.jon) 'keys')
+      =/  keys-val=(unit json)
+        =/  ks  (~(get by p.jon) 'keysets')
+        ?~  ks  (~(get by p.jon) 'keys')
+        ?.  ?=([%a *] u.ks)  (~(get by p.jon) 'keys')
+        =/  first  (snag 0 p.u.ks)
+        ?.  ?=([%o *] first)  (~(get by p.jon) 'keys')
+        (~(get by p.first) 'keys')
       ?~  keys-val
         ~&  >>>  [%ecash-swap-no-keys name.u.pending]
         =.  pending-swaps  (~(del by pending-swaps) nonce)
@@ -2150,6 +2192,8 @@
           blinding-factors.u.pending
           mint-keys
         ==
+      ::  log new proofs for recovery
+      ~&  >>>  [%ecash-swap-proofs (turn new-proofs |=(p=cashu-proof [amount.p id.p secret.p c.p]))]
       ::  add new proofs to wallet
       =/  existing-proofs=(list cashu-proof)  (~(gut by wallet.u.brd) mint.u.pending ~)
       =/  updated-wallet  (~(put by wallet.u.brd) mint.u.pending (weld existing-proofs new-proofs))
@@ -2165,6 +2209,7 @@
       =/  paid-until=@da  (add base interval.u.pay)
       =/  final-brd  new-brd(paid (~(put by paid.new-brd) who.u.pending paid-until))
       =.  pending-swaps  (~(del by pending-swaps) nonce)
+      ~&  >>>  [%ecash-swap-success name.u.pending who.u.pending (lent new-proofs) paid-until]
       :_  this(boards (~(put by boards) name.u.pending final-brd))
       :~  (give-board-update name.u.pending [%paid-update who.u.pending paid-until])
       ==
@@ -2195,7 +2240,10 @@
     =/  response=response-header:http  response-header.client-response
     =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
     ?.  =(200 status-code.response)
-      ~&  >>>  [%ecash-melt-rejected name.u.pending status-code.response]
+      =/  err-body=@t
+        ?~  body  'no body'
+        (crip (scag 500 (trip q.u.body)))
+      ~&  >>>  [%ecash-melt-rejected name.u.pending status-code.response err-body]
       =.  pending-melts  (~(del by pending-melts) nonce)
       (restore-melt-proofs u.pending)
     ?~  body
@@ -2237,6 +2285,7 @@
           =.  pending-melts  (~(del by pending-melts) nonce)
           `this
         ::  send melt execution
+        ~&  >>>  [%ecash-melt-proofs (turn selected |=(p=cashu-proof [amount.p id.p secret.p c.p]))]
         =/  melt-body=@t
           %:  en:json:html
             %:  build-melt-request:ca

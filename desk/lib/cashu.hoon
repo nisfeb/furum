@@ -8,6 +8,18 @@
 ++  secp-p
   0xffff.ffff.ffff.ffff.ffff.ffff.ffff.ffff.
   ffff.ffff.ffff.ffff.ffff.fffe.ffff.fc2f
+::  secp256k1 curve order
+++  secp-n
+  0xffff.ffff.ffff.ffff.ffff.ffff.ffff.fffe.
+  baae.dce6.af48.a03b.bfd2.5e8c.d036.4141
+::  secp256k1 generator point
+++  secp-g
+  ^-  [x=@ y=@]
+  :*  x=0x79be.667e.f9dc.bbac.55a0.6295.ce87.0b07.
+        029b.fcdb.2dce.28d9.59f2.815b.16f8.1798
+      y=0x483a.da77.26a3.c465.5da4.fbfc.0e11.08a8.
+        fd17.b448.a685.5419.9c47.d08f.fb10.d4b8
+  ==
 ::
 ::  -- Hex helpers --
 ::
@@ -38,6 +50,28 @@
     $(idx +(idx), acc (snoc (snoc acc hi) lo))
   (crip out)
 ::
+::  -- Point decompression (pure Hoon, replaces zuse) --
+::
+::  Decompress a 33-byte compressed secp256k1 point to affine [x y]
+++  ec-decompress
+  |=  compressed=@
+  ^-  [x=@ y=@]
+  =/  prefix=@  (cut 3 [32 1] compressed)
+  ?>  |(=(2 prefix) =(3 prefix))
+  =/  x=@  (end [3 32] compressed)
+  =/  fop  ~(. fo secp-p)
+  =/  x3  (pro:fop x (pro:fop x x))
+  =/  y2  (sum:fop x3 7)
+  ::  y = y2^((p+1)/4) mod p  (works since p ≡ 3 mod 4)
+  =/  y=@  (~(exp fo secp-p) (div (add secp-p 1) 4) y2)
+  ::  verify y^2 == y2
+  ?>  =((pro:fop y y) y2)
+  ::  adjust parity to match prefix
+  =/  need-odd=?  =(3 prefix)
+  =?  y  !=(=(1 (mod y 2)) need-odd)
+    (sub secp-p y)
+  [x y]
+::
 ::  -- Point serialization --
 ::
 ::  Parse compressed hex point ("02abc..." / "03abc...", 66 chars) to point
@@ -49,13 +83,15 @@
   =/  prefix=@t  (crip (scag 2 chars))
   ?>  |(=(prefix '02') =(prefix '03'))
   =/  compressed=@  (hex-to-bytes hex)
-  (decompress-point:secp256k1:secp:crypto compressed)
+  (ec-decompress compressed)
 ::
 ::  Compress point to hex string
 ++  point-to-hex
   |=  pt=[x=@ y=@]
   ^-  @t
-  =/  compressed=@  (compress-point:secp256k1:secp:crypto pt)
+  ::  manual compression: 02 if y even, 03 if y odd, then x big-endian
+  =/  prefix=@  ?:(=(0 (mod y.pt 2)) 2 3)
+  =/  compressed=@  (add (lsh [3 32] prefix) x.pt)
   (bytes-to-hex compressed 33)
 ::
 ::  -- Hash-to-curve (NUT-00 spec) --
@@ -78,10 +114,49 @@
   =/  hash=@  (shay 36 (cat 3 msg-hash counter))
   ::  try to decompress as 02 || hash (even-y point)
   =/  compressed=@  (add (lsh [3 32] 2) hash)
-  =/  result  (mule |.((decompress-point:secp256k1:secp:crypto compressed)))
+  =/  result  (mule |.((ec-decompress compressed)))
   ?:  ?=([%& *] result)
     p.result
   $(counter +(counter))
+::
+::  -- Elliptic curve point addition (affine, secp256k1) --
+::
+::  Uses Hoon stdlib fo core for modular field arithmetic.
+::  Replaces zuse add-points which produces invalid results.
+::
+++  ec-add
+  |=  [p1=[x=@ y=@] p2=[x=@ y=@]]
+  ^-  [x=@ y=@]
+  =/  fop  ~(. fo secp-p)
+  ?:  &(=(x.p1 x.p2) =(y.p1 y.p2))
+    ::  point doubling: lam = 3*x1^2 / (2*y1)
+    =/  lam  (fra:fop (pro:fop 3 (pro:fop x.p1 x.p1)) (pro:fop 2 y.p1))
+    =/  x3  (dif:fop (dif:fop (pro:fop lam lam) x.p1) x.p2)
+    =/  y3  (dif:fop (pro:fop lam (dif:fop x.p1 x3)) y.p1)
+    [x3 y3]
+  ::  point addition: lam = (y2 - y1) / (x2 - x1)
+  =/  lam  (fra:fop (dif:fop y.p2 y.p1) (dif:fop x.p2 x.p1))
+  =/  x3  (dif:fop (dif:fop (pro:fop lam lam) x.p1) x.p2)
+  =/  y3  (dif:fop (pro:fop lam (dif:fop x.p1 x3)) y.p1)
+  [x3 y3]
+::
+::  Scalar multiplication via double-and-add
+::
+++  ec-mul
+  |=  [pt=[x=@ y=@] k=@]
+  ^-  [x=@ y=@]
+  =/  res=[x=@ y=@]  pt
+  =/  acc=[x=@ y=@]  pt
+  =/  first=?  &
+  =/  bits=@ud  (met 0 k)
+  =/  idx=@ud  0
+  |-
+  ?:  =(idx bits)  res
+  ?:  =(1 (cut 0 [idx 1] k))
+    ?:  first
+      $(idx +(idx), res acc, acc (ec-add acc acc), first |)
+    $(idx +(idx), res (ec-add res acc), acc (ec-add acc acc))
+  $(idx +(idx), acc (ec-add acc acc))
 ::
 ::  -- BDHKE operations --
 ::
@@ -90,10 +165,21 @@
 ++  blind-message
   |=  [secret=@t r=@]
   ^-  [b-prime=[x=@ y=@] blinding-factor=@]
+  ::  reduce r modulo curve order to ensure valid scalar
+  =/  r-mod=@  (mod r secp-n)
+  =?  r-mod  =(0 r-mod)  1
   =/  yy  (hash-to-curve secret)
-  =/  r-g  (priv-to-pub:secp256k1:secp:crypto r)
-  =/  b-prime  (add-points:secp256k1:secp:crypto yy r-g)
-  [b-prime=b-prime blinding-factor=r]
+  =/  dbg=@t
+    %+  rap  3
+    :~  'blind-Y x='
+        (bytes-to-hex x.yy 32)
+        ' y='
+        (bytes-to-hex y.yy 32)
+    ==
+  ~>  %slog.[0 leaf+(trip dbg)]
+  =/  r-g  (ec-mul secp-g r-mod)
+  =/  b-prime  (ec-add yy r-g)
+  [b-prime=b-prime blinding-factor=r-mod]
 ::
 ::  Unblind a signature: C = C_ - r*K
 ::  C_ = blinded signature from mint
@@ -102,10 +188,21 @@
 ++  unblind-signature
   |=  [c-blind=[x=@ y=@] r=@ mint-key=[x=@ y=@]]
   ^-  [x=@ y=@]
-  =/  r-k  (mul-point-scalar:secp256k1:secp:crypto mint-key r)
+  =/  r-k  (ec-mul mint-key r)
   ::  negate r*K: flip y coordinate (mod p)
   =/  neg-r-k  r-k(y (sub secp-p y.r-k))
-  (add-points:secp256k1:secp:crypto c-blind neg-r-k)
+  =/  result  (ec-add c-blind neg-r-k)
+  =/  dbg2=@t
+    %+  rap  3
+    :~  'unblind C_='
+        (bytes-to-hex x.c-blind 32)
+        ' rK='
+        (bytes-to-hex x.r-k 32)
+        ' C='
+        (bytes-to-hex x.result 32)
+    ==
+  ~>  %slog.[0 leaf+(trip dbg2)]
+  result
 ::
 ::  -- NUT-03 swap request/response builders --
 ::
@@ -119,7 +216,12 @@
   ::  use hash of eny as blinding factor (ensure non-zero, < curve order)
   =/  r=@  (shax (cat 3 eny 'blind'))
   =/  [b-prime=[x=@ y=@] blinding-factor=@]  (blind-message secret r)
+  ::  verify the point is valid by round-trip: compress then decompress
   =/  b-hex=@t  (point-to-hex b-prime)
+  =/  check  (mule |.((hex-to-point b-hex)))
+  ?.  ?=([%& *] check)
+    ::  point invalid, retry with different entropy
+    $(eny (shax (cat 3 eny 'retry')))
   [b-hex secret blinding-factor]
 ::
 ::  Build swap request JSON from user proofs and generated outputs
