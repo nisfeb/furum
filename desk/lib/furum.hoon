@@ -136,6 +136,18 @@
   .mobile-sidebar summary { cursor: pointer; color: #828282; font-size: 13px; }
   .mobile-sidebar a { color: #cc2020; }
   body.dark .mobile-sidebar a { color: #f08080; }
+  .paywall-status { font-size: 18px; font-weight: bold; color: #cc2020; }
+  .paywall-info { background: #ffeeba; padding: 12px; border-radius: 6px; margin: 12px 0; font-size: 15px; }
+  body.dark .paywall-info { background: #4a3c00; color: #ffeeba; }
+  .payment-form { margin-top: 16px; }
+  .payment-form label { font-weight: bold; font-size: 14px; }
+  .payment-form select, .payment-form input[type="text"], .payment-form textarea {
+    width: 100%; max-width: 500px; padding: 6px; font-size: 14px; }
+  #token-summary { font-size: 13px; color: #666; margin-top: 4px; }
+  .wallet-entry { background: #f0f9ff; border: 1px solid #bde; padding: 12px; border-radius: 6px; margin: 8px 0; }
+  body.dark .wallet-entry { background: #1a2a3a; border-color: #345; }
+  .wallet-entry p { margin: 4px 0; }
+  .wallet-entry textarea { width: 100%; max-width: 500px; padding: 6px; font-size: 14px; }
   @media (max-width: 768px) {
     .board-layout { flex-direction: column; }
     .board-sidebar { display: none; }
@@ -1401,8 +1413,128 @@
 ::
 ::  MODERATION PANEL
 ::
+++  known-mints
+  ^-  (list [@t @t])
+  :~  ['https://mint.minibits.cash/Bitcoin' 'Minibits (Bitcoin)']
+      ['https://mint.chorus.community' 'Chorus Community']
+      ['https://mint.cubabitcoin.org' 'Cuba Bitcoin']
+  ==
+::
+++  render-paywall
+  |=  [host=@p =board-info pay=payment-config expired=(unit @da) dark=?]
+  ^-  manx
+  =/  board-path=tape
+    "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
+  =/  price-text=tape  (a-co:co price.pay)
+  =/  days=@ud  (div interval.pay ~d1)
+  =/  days-text=tape  (a-co:co days)
+  =/  status-msg=manx
+    ?~  expired
+      ;p.paywall-status: This board requires payment to access.
+    ;p.paywall-status: Your access has expired. Pay to renew.
+  =/  mint-options=marl
+    %+  turn  known-mints
+    |=  [url=@t label=@t]
+    ;option(value (trip url)): {(trip label)}
+  =/  token-js=cord
+    '''
+    (function(){
+      function b64url(s){return s.replace(/-/g,'+').replace(/_/g,'/').replace(/=+$/,'');}
+      function decodeCBOR(buf){var d=new DataView(buf),p=0;function r(){var b=d.getUint8(p++),m=b>>5,a=b&31,v=a;if(a===24)v=d.getUint8(p++);else if(a===25){v=d.getUint16(p);p+=2;}else if(a===26){v=d.getUint32(p);p+=4;}if(m===0)return v;if(m===2){var u=new Uint8Array(buf,p,v);p+=v;return Array.from(u).map(function(x){return('0'+x.toString(16)).slice(-2)}).join('');}if(m===3){var t=new TextDecoder().decode(new Uint8Array(buf,p,v));p+=v;return t;}if(m===4){var ar=[];for(var i=0;i<v;i++)ar.push(r());return ar;}if(m===5){var o={};for(var i=0;i<v;i++){var k=r();o[k]=r();}return o;}return v;}return r();}
+      var ta=document.getElementById('token-input');
+      var mf=document.getElementById('mint-select');
+      var cf=document.getElementById('mint-custom');
+      var sf=document.getElementById('token-summary');
+      var hid=document.getElementById('tokens-hidden');
+      var hm=document.getElementById('mint-hidden');
+      if(mf.options.length>0&&mf.value!=='custom')hm.value=mf.value;
+      ta.addEventListener('input',function(){
+        var v=ta.value.trim();
+        try{
+          var proofs=[],mint='';
+          if(v.startsWith('cashuA')){
+            var j=JSON.parse(atob(b64url(v.slice(6))));
+            if(j.token&&j.token[0]){mint=j.token[0].mint||'';proofs=j.token[0].proofs||[];}
+          }else if(v.startsWith('cashuB')){
+            var raw=atob(b64url(v.slice(6)));
+            var buf=new ArrayBuffer(raw.length);
+            var u8=new Uint8Array(buf);
+            for(var i=0;i<raw.length;i++)u8[i]=raw.charCodeAt(i);
+            var obj=decodeCBOR(buf);
+            mint=obj.m||'';
+            if(obj.t){obj.t.forEach(function(g){
+              var kid=typeof g.i==='string'?g.i:'';
+              if(g.p)g.p.forEach(function(pr){
+                proofs.push({amount:pr.a,secret:pr.s,C:pr.c,id:kid});
+              });
+            });}
+          }else{
+            var j=JSON.parse(v);
+            if(j.inputs)proofs=j.inputs;
+            else if(Array.isArray(j))proofs=j;
+            else if(j.token&&j.token[0]){mint=j.token[0].mint||'';proofs=j.token[0].proofs||[];}
+          }
+          var total=proofs.reduce(function(s,p){return s+(p.amount||0);},0);
+          sf.textContent=total>0?'Total: '+total+' sats ('+proofs.length+' proofs)':'';
+          hid.value=JSON.stringify({inputs:proofs});
+          if(mint){
+            cf.value=mint;
+            mf.value='custom';
+            hm.value=mint;
+          }
+        }catch(e){sf.textContent='Could not parse token';hid.value='';}
+      });
+      mf.addEventListener('change',function(){
+        if(mf.value==='custom'){hm.value=cf.value;}
+        else{hm.value=mf.value;cf.value='';}
+      });
+      cf.addEventListener('input',function(){
+        mf.value='custom';hm.value=cf.value;
+      });
+    })();
+    '''
+  =/  paywall-content=marl
+    :~  ;h3: {(trip title.board-info)}
+        ;p.me: {(trip description.board-info)}
+        ;hr;
+        status-msg
+        ;div.paywall-info
+          ;p: Price: {price-text} sats for {days-text} days of access
+        ==
+        ;form.payment-form(method "post", action "{board-path}/pay")
+          ;input(type "hidden", name "tokens", id "tokens-hidden", value "");
+          ;input(type "hidden", name "mint", id "mint-hidden", value "");
+          ;div
+            ;label: Select Mint
+            ;br;
+            ;select(name "mint-select", id "mint-select")
+              ;*  mint-options
+              ;option(value "custom"): Custom mint URL...
+            ==
+          ==
+          ;br;
+          ;div
+            ;label: Custom Mint URL
+            ;br;
+            ;input(type "text", name "mint-custom", id "mint-custom", placeholder "https://mint.example.com");
+          ==
+          ;br;
+          ;div
+            ;label: Paste Cashu Token (cashuA.../cashuB... or raw JSON)
+            ;br;
+            ;textarea(id "token-input", rows "6", cols "60", placeholder "cashuAeyJ0b2tlbi...");
+          ==
+          ;p(id "token-summary");
+          ;br;
+          ;input.btn(type "submit", value "submit payment");
+        ==
+        ;script: {(trip token-js)}
+    ==
+  %-  page-shell
+  [(crip "furum - {(trip name.board-info)} - payment required") paywall-content `[board-path (trip title.board-info)] %.n dark]
+::
 ++  render-mod
-  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t]
+  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof))]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -1477,10 +1609,84 @@
       ==
       ;hr;
     ==
+  =/  pay-enabled=?  ?=(^ payment)
+  =/  pay-price=tape  ?~(payment "0" (a-co:co price.u.payment))
+  =/  pay-days=tape  ?~(payment "30" (a-co:co (div interval.u.payment ~d1)))
+  =/  pay-checkbox=manx
+    ?:  pay-enabled
+      ;input(type "checkbox", name "enabled", value "on", checked "checked");
+    ;input(type "checkbox", name "enabled", value "on");
+  =/  payment-section=manx
+    ?.  is-host  ;span;
+    ;div
+      ;h4: Paid Access
+      ;p.me: Enable paid access to require ecash tokens for board access. Paid boards cannot be public.
+      ;form(method "post", action "{board-path}/mod/payment")
+        ;div
+          ;label
+            ;+  pay-checkbox
+            ;+  ;/(" Enable paid access")
+          ==
+        ==
+        ;br;
+        ;div
+          ;label: Price (sats)
+          ;br;
+          ;input(type "number", name "price", min "1", value pay-price);
+        ==
+        ;br;
+        ;div
+          ;label: Access duration (days)
+          ;br;
+          ;input(type "number", name "interval", min "1", value pay-days);
+        ==
+        ;br;
+        ;input.btn(type "submit", value "save payment config");
+      ==
+      ;hr;
+    ==
+  =/  wallet-entries=(list [@t @ud @ud])
+    %+  turn  ~(tap by wallet)
+    |=  [mint=@t proofs=(list cashu-proof)]
+    =/  total=@ud  (roll proofs |=([p=cashu-proof acc=@ud] (add acc amount.p)))
+    [mint total (lent proofs)]
+  =/  wallet-section=manx
+    ?.  is-host  ;span;
+    ?:  =(0 (lent wallet-entries))
+      ;div
+        ;h4: Wallet
+        ;p.me: No ecash tokens stored. Tokens will appear here when users pay for board access.
+        ;hr;
+      ==
+    ;div
+      ;h4: Wallet
+      ;p.me: Ecash tokens received from board payments. Withdraw to Lightning below.
+      ;*
+      %+  turn  wallet-entries
+      |=  [mint=@t total=@ud count=@ud]
+      ^-  manx
+      ;div.wallet-entry
+        ;p: Mint: {(trip mint)}
+        ;p: Balance: {(a-co:co total)} sats ({(a-co:co count)} proofs)
+        ;form(method "post", action "{board-path}/mod/melt")
+          ;input(type "hidden", name "mint", value (trip mint));
+          ;div
+            ;label: Lightning Invoice (bolt11)
+            ;br;
+            ;textarea(name "invoice", rows "3", cols "60", placeholder "lnbc...");
+          ==
+          ;br;
+          ;input.btn(type "submit", value "withdraw to lightning");
+        ==
+      ==
+      ;hr;
+    ==
   =/  mod-content=marl
     :~  ;h3: Moderate {(trip title.board-info)}
         ;p.me: Default role: {(trip (role-to-text default-role.board-info))}
         pub-section
+        payment-section
+        wallet-section
         sidebar-section
         ;h4: Set User Role
         role-form

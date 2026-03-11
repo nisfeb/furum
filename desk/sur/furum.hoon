@@ -55,6 +55,20 @@
 ::
 ::  full board state (on host ship)
 ::
++$  payment-config
+  $:  price=@ud
+      interval=@dr
+  ==
+::
+::  a stored cashu proof (host wallet)
+::
++$  cashu-proof
+  $:  amount=@ud
+      id=@t
+      secret=@t
+      c=@t
+  ==
+::
 +$  board
   $:  info=board-info
       roles=(map @p role)
@@ -64,6 +78,10 @@
       next-comment-ids=(map post-id comment-id)
       pinned=(set post-id)
       sidebar=@t
+      payment=(unit payment-config)
+      paid=(map @p @da)
+      wallet=(map @t (list cashu-proof))
+      mint-keysets=(map @t (map @ud @t))
   ==
 ::
 ::  registry directory entry
@@ -86,6 +104,7 @@
       comments=(map post-id (map comment-id comment))
       pinned=(set post-id)
       sidebar=@t
+      paid-until=(unit @da)
   ==
 ::
 ::  actions: pokes to a board host
@@ -110,6 +129,10 @@
       [%pin-post name=board-name id=post-id pinned=?]
       ::  sidebar
       [%set-sidebar name=board-name sidebar=@t]
+      ::  payment
+      [%set-payment name=board-name payment=(unit payment-config)]
+      [%submit-payment name=board-name mint=@t tokens=@t]
+      [%melt-to-lightning name=board-name mint=@t invoice=@t]
       ::  subscriptions
       [%resub host=@p name=board-name]
       ::  following
@@ -138,7 +161,7 @@
 ::  updates: subscription facts from a board host
 ::
 +$  update
-  $%  [%initial info=board-info roles=(map @p role) posts=(list post) comments=(map post-id (map comment-id comment)) pinned=(set post-id) sidebar=@t]
+  $%  [%initial info=board-info roles=(map @p role) posts=(list post) comments=(map post-id (map comment-id comment)) pinned=(set post-id) sidebar=@t payment=(unit payment-config) paid-until=(unit @da)]
       [%new-post =post]
       [%delete-post id=post-id]
       [%edit-post id=post-id title=@t body=(unit @t)]
@@ -149,6 +172,8 @@
       [%board-info-update info=board-info]
       [%pin-update id=post-id pinned=?]
       [%sidebar-update sidebar=@t]
+      [%payment-config-update payment=(unit payment-config)]
+      [%paid-update who=@p paid-until=@da]
   ==
 ::
 ::  registry updates: subscription facts from the registry
