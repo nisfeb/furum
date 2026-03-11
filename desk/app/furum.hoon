@@ -613,6 +613,7 @@
     ::
         %new-post
       =/  brd  (~(got by boards) name.act)
+      ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-post src.bowl brd)
       =/  =post
         :*  id=next-post-id.brd
@@ -652,6 +653,7 @@
     ::
         %edit-post
       =/  brd  (~(got by boards) name.act)
+      ?>  (has-paid-access src.bowl brd now.bowl)
       =/  =post  (~(got by posts.brd) id.act)
       ?>  =(src.bowl author.post)
       =/  new-pst  post(title title.act, body body.act)
@@ -662,6 +664,7 @@
     ::
         %new-comment
       =/  brd  (~(got by boards) name.act)
+      ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-post src.bowl brd)
       =/  post-comments  (~(got by comments.brd) post.act)
       =/  next-cid  (~(got by next-comment-ids.brd) post.act)
@@ -721,16 +724,19 @@
     ::
         %upvote
       =/  brd  (~(got by boards) name.act)
+      ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %up)
     ::
         %downvote
       =/  brd  (~(got by boards) name.act)
+      ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %down)
     ::
         %remove-vote
       =/  brd  (~(got by boards) name.act)
+      ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %remove)
     ==
@@ -1652,13 +1658,25 @@
       [%board @ ~]
     =/  name=board-name  i.t.path
     =/  brd  (~(got by boards) name)
-    =/  post-list=(list post)  ~(val by posts.brd)
     =/  subscriber-role=role  (get-role src.bowl brd)
     =/  sub-paid-until=(unit @da)
       ?~  payment.brd  ~
       (~(get by paid.brd) src.bowl)
+    =/  has-access=?  (has-paid-access src.bowl brd now.bowl)
+    =/  post-list=(list post)
+      ?.  has-access  ~
+      ~(val by posts.brd)
+    =/  cmts=(map post-id (map comment-id comment))
+      ?.  has-access  *(map post-id (map comment-id comment))
+      comments.brd
+    =/  pins=(set post-id)
+      ?.  has-access  *(set post-id)
+      pinned.brd
+    =/  sb=@t
+      ?.  has-access  ''
+      sidebar.brd
     :_  this
-    :~  [%give %fact ~ %furum-update !>(`update`[%initial info.brd roles.brd post-list comments.brd pinned.brd sidebar.brd payment.brd sub-paid-until])]
+    :~  [%give %fact ~ %furum-update !>(`update`[%initial info.brd roles.brd post-list cmts pins sb payment.brd sub-paid-until])]
         [%give %fact ~ %furum-update !>(`update`[%role-update src.bowl `subscriber-role])]
     ==
   ==
@@ -1861,7 +1879,12 @@
       ?.  =(who.upd our.bowl)  `this
       =/  cb  (~(get by cache) key)
       ?~  cb  `this
-      `this(cache (~(put by cache) key u.cb(paid-until `paid-until.upd)))
+      ::  update paid-until, then re-subscribe to get full content
+      =.  cache  (~(put by cache) key u.cb(paid-until `paid-until.upd))
+      :_  this
+      :~  [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
+          [%pass /board/(scot %p host)/[name] %agent [host %furum] %watch /board/[name]]
+      ==
     ==
   --
 ::
