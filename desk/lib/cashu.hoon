@@ -156,7 +156,7 @@
   =/  c-val=json  (~(gut by p.sig) 'C_' [%s ''])
   =/  amount=@ud
     ?.  ?=([%n *] amt)  0
-    (rash p.amt dem:ag)
+    (roll (trip p.amt) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
   =/  keyset-id=@t
     ?.  ?=([%s *] kid)  ''
     p.kid
@@ -213,8 +213,8 @@
   ?~  f  ~
   :-  ~
   :+  ?:(?=([%s *] u.q) p.u.q '')
-    ?:(?=([%n *] u.a) (rash p.u.a dem:ag) 0)
-  ?:(?=([%n *] u.f) (rash p.u.f dem:ag) 0)
+    ?:(?=([%n *] u.a) (roll (trip p.u.a) |=([c=@ a=@ud] (add (mul a 10) (sub c '0')))) 0)
+  ?:(?=([%n *] u.f) (roll (trip p.u.f) |=([c=@ a=@ud] (add (mul a 10) (sub c '0')))) 0)
 ::
 ::  Build melt execution request from stored proofs
 ++  build-melt-request
@@ -257,11 +257,11 @@
   %-  ~(rep by p.u.keys-val)
   |=  [[amt-key=@t hex-val=json] acc=(map @ud [x=@ y=@])]
   ?.  ?=([%s *] hex-val)  acc
-  =/  amt  (rush amt-key dem:ag)
-  ?~  amt  acc
+  =/  amt=@ud  (roll (trip amt-key) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
+  ?:  =(0 amt)  acc
   =/  pt-result  (mule |.((hex-to-point p.hex-val)))
   ?.  ?=([%& *] pt-result)  acc
-  (~(put by acc) u.amt p.pt-result)
+  (~(put by acc) amt p.pt-result)
 ::
 ::  -- Amount splitting --
 ::

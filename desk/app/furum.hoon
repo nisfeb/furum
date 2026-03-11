@@ -541,7 +541,7 @@
         =/  amt=@ud
           ?~  amt-val  0
           ?+  -.u.amt-val  0
-            %n  (rash p.u.amt-val dem:ag)
+            %n  (roll (trip p.u.amt-val) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
           ==
         =/  kid=@t
           ?~  id-val  kid.acc
@@ -1449,8 +1449,14 @@
       =/  enabled=@t  (~(gut by form) 'enabled' 'off')
       =/  price-val=@t  (crip (skip (trip (~(gut by form) 'price' '0')) |=(c=@ =(c '.'))))
       =/  interval-val=@t  (crip (skip (trip (~(gut by form) 'interval' '30')) |=(c=@ =(c '.'))))
-      =/  price=@ud  (rash price-val dem:ag)
-      =/  days=@ud  (rash interval-val dem:ag)
+      =/  price=@ud
+        %+  roll  (trip price-val)
+        |=  [c=@ acc=@ud]
+        (add (mul acc 10) (sub c '0'))
+      =/  days=@ud
+        %+  roll  (trip interval-val)
+        |=  [c=@ acc=@ud]
+        (add (mul acc 10) (sub c '0'))
       =/  pay=(unit payment-config)
         ?.  =('on' enabled)  ~
         `[price (mul ~d1 days)]
@@ -1975,9 +1981,9 @@
         %-  ~(rep by p.u.keys-val)
         |=  [[amt-key=@t hex-val=json] acc=(map @ud @t)]
         ?.  ?=([%s *] hex-val)  acc
-        =/  amt  (rush amt-key dem:ag)
-        ?~  amt  acc
-        (~(put by acc) u.amt p.hex-val)
+        =/  amt=@ud  (roll (trip amt-key) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
+        ?:  =(0 amt)  acc
+        (~(put by acc) amt p.hex-val)
       =/  new-brd  u.brd(mint-keysets (~(put by mint-keysets.u.brd) keyset-id.u.pending key-map))
       =.  boards  (~(put by boards) name.u.pending new-brd)
       =.  pending-swaps  (~(del by pending-swaps) nonce)
