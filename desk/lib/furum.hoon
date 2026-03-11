@@ -1425,9 +1425,9 @@
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
-  =/  price-text=tape  (a-co:co price.pay)
+  =/  price-text=tape  (skip (a-co:co price.pay) |=(c=@ =(c '.')))
   =/  days=@ud  (div interval.pay ~d1)
-  =/  days-text=tape  (a-co:co days)
+  =/  days-text=tape  (skip (a-co:co days) |=(c=@ =(c '.')))
   =/  refresh-js=tape  (trip 'setTimeout(function(){location.reload()},3000)')
   =/  refresh-node=manx  [[%script ~] [[[%$ [%$ refresh-js] ~] ~] ~]]
   =/  pending-section=manx
@@ -1621,8 +1621,8 @@
       ;hr;
     ==
   =/  pay-enabled=?  ?=(^ payment)
-  =/  pay-price=tape  ?~(payment "0" (a-co:co price.u.payment))
-  =/  pay-days=tape  ?~(payment "30" (a-co:co (div interval.u.payment ~d1)))
+  =/  pay-price=tape  (skip ?~(payment "0" (a-co:co price.u.payment)) |=(c=@ =(c '.')))
+  =/  pay-days=tape  (skip ?~(payment "30" (a-co:co (div interval.u.payment ~d1))) |=(c=@ =(c '.')))
   =/  pay-checkbox=manx
     ?:  pay-enabled
       ;input(type "checkbox", name "enabled", value "on", checked "checked");
@@ -1686,7 +1686,7 @@
       ^-  manx
       ;div.wallet-entry
         ;p: Mint: {(trip mint)}
-        ;p: Balance: {(a-co:co total)} sats ({(a-co:co count)} proofs)
+        ;p: Balance: {(skip (a-co:co total) |=(c=@ =(c '.')))} sats ({(skip (a-co:co count) |=(c=@ =(c '.')))} proofs)
         ;form(method "post", action "{board-path}/mod/melt")
           ;input(type "hidden", name "mint", value (trip mint));
           ;div

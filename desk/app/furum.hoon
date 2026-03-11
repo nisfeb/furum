@@ -1438,8 +1438,8 @@
       =/  host=@p  (slav %p i.t.path)
       =/  name=board-name  i.t.t.path
       =/  enabled=@t  (~(gut by form) 'enabled' 'off')
-      =/  price-val=@t  (~(gut by form) 'price' '0')
-      =/  interval-val=@t  (~(gut by form) 'interval' '30')
+      =/  price-val=@t  (crip (skip (trip (~(gut by form) 'price' '0')) |=(c=@ =(c '.'))))
+      =/  interval-val=@t  (crip (skip (trip (~(gut by form) 'interval' '30')) |=(c=@ =(c '.'))))
       =/  price=@ud  (rash price-val dem:ag)
       =/  days=@ud  (rash interval-val dem:ag)
       =/  pay=(unit payment-config)
