@@ -328,6 +328,53 @@
   =/  state=@t  ?:(?=([%s *] u.st) p.u.st '')
   `[state =(state 'PAID')]
 ::
+::  -- NUT-04 mint (Lightning invoice) --
+::
+::  Build mint quote request
+++  build-mint-quote-request
+  |=  [amount=@ud unit=@t]
+  ^-  json
+  %-  pairs:enjs:format
+  :~  ['amount' (numb:enjs:format amount)]
+      ['unit' s+unit]
+  ==
+::
+::  Parse mint quote response
+++  parse-mint-quote
+  |=  jon=json
+  ^-  (unit [quote=@t request=@t state=@t expiry=@ud])
+  ?.  ?=([%o *] jon)  ~
+  =/  q  (~(get by p.jon) 'quote')
+  =/  r  (~(get by p.jon) 'request')
+  =/  s  (~(get by p.jon) 'state')
+  =/  e  (~(get by p.jon) 'expiry')
+  ?~  q  ~
+  ?~  r  ~
+  ?~  s  ~
+  ?~  e  ~
+  :-  ~
+  :^    ?:(?=([%s *] u.q) p.u.q '')
+      ?:(?=([%s *] u.r) p.u.r '')
+    ?:(?=([%s *] u.s) p.u.s '')
+  ?:(?=([%n *] u.e) (roll (trip p.u.e) |=([c=@ a=@ud] (add (mul a 10) (sub c '0')))) 0)
+::
+::  Build mint token request (NUT-04 step 2)
+++  build-mint-request
+  |=  [quote-id=@t outputs=(list [amount=@ud id=@t b-hex=@t])]
+  ^-  json
+  %-  pairs:enjs:format
+  :~  ['quote' s+quote-id]
+      :-  'outputs'
+      :-  %a
+      %+  turn  outputs
+      |=  [amount=@ud id=@t b-hex=@t]
+      %-  pairs:enjs:format
+      :~  ['amount' (numb:enjs:format amount)]
+          ['id' s+id]
+          ['B_' s+b-hex]
+      ==
+  ==
+::
 ::  -- Keyset parsing --
 ::
 ::  Parse mint keyset response: {keys: {amount_str: hex_pubkey, ...}}

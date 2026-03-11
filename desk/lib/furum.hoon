@@ -1437,8 +1437,16 @@
   =/  price-text=tape  (skip (a-co:co price.pay) |=(c=@ =(c '.')))
   =/  days=@ud  (div interval.pay ~d1)
   =/  days-text=tape  (skip (a-co:co days) |=(c=@ =(c '.')))
-  =/  refresh-js=tape  (trip 'setTimeout(function(){location.reload()},3000)')
-  =/  refresh-node=manx  [[%script ~] [[[%$ [%$ refresh-js] ~] ~] ~]]
+  =/  paywall-refresh-js=tape  (trip 'setInterval(function(){location.reload()},3000)')
+  =/  refresh-node=manx  [[%script ~] [[[%$ [%$ paywall-refresh-js] ~] ~] ~]]
+  =/  ln-section=manx
+    ?~  mint.pay  ;span;
+    :-  [%div ~[['style' "margin-top: 24px; padding-top: 16px; border-top: 1px solid #ccc; text-align: center"]]]
+    :~  ;p: — or —
+        ;form(method "post", action "{board-path}/pay-lightning")
+          ;input.btn(type "submit", value "pay with lightning");
+        ==
+    ==
   =/  pending-section=manx
     ?.  pending  ;span;
     :-  [%div ~[['class' "paywall-info"]]]
@@ -1725,12 +1733,57 @@
           ;br;
           ;input.btn(type "submit", value "submit payment");
         ==
+        ln-section
         ;script: {(trip token-js)}
         qr-overlay
         qr-scan-script
     ==
   %-  page-shell
   [(crip "furum - {(trip name.board-info)} - payment required") paywall-content `[board-path (trip title.board-info)] %.n dark]
+::
+++  render-lightning-invoice
+  |=  [host=@p =board-info pay=payment-config bolt11=(unit @t) dark=?]
+  ^-  manx
+  =/  board-path=tape
+    "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
+  =/  price-text=tape  (skip (a-co:co price.pay) |=(c=@ =(c '.')))
+  =/  days=@ud  (div interval.pay ~d1)
+  =/  days-text=tape  (skip (a-co:co days) |=(c=@ =(c '.')))
+  =/  refresh-js=tape  (trip 'setInterval(function(){location.reload()},4000)')
+  =/  refresh-node=manx  [[%script ~] [[[%$ [%$ refresh-js] ~] ~] ~]]
+  =/  copy-js=tape  "navigator.clipboard.writeText(document.getElementById('bolt11-text').value)"
+  =/  invoice-content=manx
+    ?~  bolt11
+      ;div.paywall
+        ;h3: Lightning Payment
+        ;div.paywall-info
+          ;p: Pay {price-text} sats for {days-text} days of access
+        ==
+        ;p: Generating invoice...
+        ;+  refresh-node
+      ==
+    ;div.paywall
+      ;h3: Lightning Payment
+      ;div.paywall-info
+        ;p: Pay {price-text} sats for {days-text} days of access
+      ==
+      ;div(style "text-align: center; margin: 16px 0")
+        ;img(src "https://api.qrserver.com/v1/create-qr-code/?size=280x280&data={(trip u.bolt11)}", alt "Lightning Invoice QR Code", style "max-width: 280px");
+      ==
+      ;div(style "margin: 12px 0")
+        ;label: Lightning Invoice
+        ;br;
+        ;textarea(rows "4", cols "60", id "bolt11-text", style "font-size: 11px; word-break: break-all"): {(trip u.bolt11)}
+      ==
+      ;button.btn(type "button", onclick "{copy-js}"): Copy Invoice
+      ;p(style "margin-top: 16px; color: #666"): Waiting for payment... This page will refresh automatically.
+      ;+  refresh-node
+    ==
+  =/  content=marl
+    :~  invoice-content
+    ==
+  %-  page-shell
+  [(crip "furum - {(trip name.board-info)} - lightning payment") content `[board-path (trip title.board-info)] %.n dark]
 ::
 ++  render-mod
   |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved-payment=?]
@@ -1811,6 +1864,7 @@
   =/  pay-enabled=?  ?=(^ payment)
   =/  pay-price=tape  (skip ?~(payment "0" (a-co:co price.u.payment)) |=(c=@ =(c '.')))
   =/  pay-days=tape  (skip ?~(payment "30" (a-co:co (div interval.u.payment ~d1))) |=(c=@ =(c '.')))
+  =/  pay-mint=tape  ?~(payment "" ?~(mint.u.payment "" (trip u.mint.u.payment)))
   =/  pay-checkbox=manx
     ?:  pay-enabled
       ;input(type "checkbox", name "enabled", value "on", checked "checked");
@@ -1846,20 +1900,27 @@
           ;input(type "number", name "interval", min "1", value pay-days);
         ==
         ;br;
+        ;div
+          ;label: Mint URL (enables Lightning payments)
+          ;br;
+          ;input(type "text", name "mint-url", value pay-mint, placeholder "https://mint.example.com", style "width: 400px");
+        ==
+        ;br;
         ;input.btn(type "submit", value "save payment config");
       ==
       ;hr;
     ==
   =/  wallet-entries=(list [@t @ud @ud])
-    %+  turn  ~(tap by wallet)
+    %+  murn  ~(tap by wallet)
     |=  [mint=@t proofs=(list cashu-proof)]
     =/  total=@ud  (roll proofs |=([p=cashu-proof acc=@ud] (add acc amount.p)))
-    [mint total (lent proofs)]
+    ?:  =(0 total)  ~
+    `[mint total (lent proofs)]
   =/  melt-pending-banner=manx
     ?.  pending-melt  ;span;
     :-  [%div ~[['class' "paywall-info"]]]
     :~  ;p: Processing withdrawal... This page will refresh automatically.
-        [[%script ~] [[[%$ [%$ (trip 'setTimeout(function(){location.reload()},3000)')] ~] ~] ~]]
+        [[%script ~] [[[%$ [%$ (trip 'setInterval(function(){location.reload()},3000)')] ~] ~] ~]]
     ==
   =/  wallet-section=manx
     ?.  is-host  ;span;
@@ -1874,6 +1935,7 @@
       ;h4: Wallet
       ;+  melt-pending-banner
       ;p.me: Ecash tokens received from board payments. Withdraw to Lightning below.
+      ;a.btn(href "{board-path}/mod/backup-proofs", style "margin-bottom: 12px; display: inline-block"): backup proofs
       ;*
       %+  turn  wallet-entries
       |=  [mint=@t total=@ud count=@ud]

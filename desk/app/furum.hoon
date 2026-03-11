@@ -78,6 +78,10 @@
       pinned=(set post-id)
       sidebar=@t
   ==
++$  s8-payment-config
+  $:  price=@ud
+      interval=@dr
+  ==
 +$  s8-board
   $:  info=board-info
       roles=(map @p role)
@@ -87,7 +91,7 @@
       next-comment-ids=(map post-id comment-id)
       pinned=(set post-id)
       sidebar=@t
-      payment=(unit payment-config)
+      payment=(unit s8-payment-config)
       paid=(map @p @da)
   ==
 +$  s9-cached-board
@@ -97,6 +101,16 @@
       comments=(map post-id (map comment-id comment))
       pinned=(set post-id)
       sidebar=@t
+      paid-until=(unit @da)
+  ==
++$  s11-cached-board
+  $:  info=board-info
+      roles=(map @p role)
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+      pinned=(set post-id)
+      sidebar=@t
+      payment=(unit s8-payment-config)
       paid-until=(unit @da)
   ==
 ::
@@ -111,6 +125,7 @@
       state-9
       state-10
       state-11
+      state-12
   ==
 ::
 +$  state-2
@@ -202,6 +217,21 @@
       pending-payments=(map @t [who=@p name=board-name amount=@ud])
   ==
 ::
++$  s11-board
+  $:  info=board-info
+      roles=(map @p role)
+      next-post-id=post-id
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+      next-comment-ids=(map post-id comment-id)
+      pinned=(set post-id)
+      sidebar=@t
+      payment=(unit s8-payment-config)
+      paid=(map @p @da)
+      wallet=(map @t (list cashu-proof))
+      mint-keysets=(map @t (map @ud @t))
+  ==
+::
 +$  pending-swap
   $:  who=@p
       name=board-name
@@ -224,10 +254,32 @@
       fee-reserve=@ud
   ==
 ::
++$  pending-mint-quote
+  $:  who=@p
+      name=board-name
+      mint=@t
+      quote-id=@t
+      bolt11=@t
+      amount=@ud
+      keyset-id=@t
+      expiry=@da
+      step=?(%quote %check-quote %mint-tokens %fetch-keys)
+      secrets=(list @t)
+      blinding-factors=(list @)
+  ==
+::
++$  pending-ln-invoice
+  $:  host=@p
+      name=board-name
+      bolt11=(unit @t)
+      amount=@ud
+      expiry=@ud
+  ==
+::
 +$  state-9
   $:  %9
       registry=(map board-name directory-entry)
-      boards=(map board-name board)
+      boards=(map board-name s11-board)
       cache=(map [@p board-name] s9-cached-board)
       subs=(set [@p board-name])
       dark-mode=(set @p)
@@ -243,8 +295,8 @@
 +$  state-10
   $:  %10
       registry=(map board-name directory-entry)
-      boards=(map board-name board)
-      cache=(map [@p board-name] cached-board)
+      boards=(map board-name s11-board)
+      cache=(map [@p board-name] s11-cached-board)
       subs=(set [@p board-name])
       dark-mode=(set @p)
       registry-admins=(set @p)
@@ -259,6 +311,22 @@
 +$  state-11
   $:  %11
       registry=(map board-name directory-entry)
+      boards=(map board-name s11-board)
+      cache=(map [@p board-name] s11-cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
+      board-seen=(map [@p board-name] @da)
+      post-seen=(map [@p board-name post-id] @da)
+      pending-swaps=(map @t pending-swap)
+      pending-melts=(map @t pending-melt)
+  ==
+::
++$  state-12
+  $:  %12
+      registry=(map board-name directory-entry)
       boards=(map board-name board)
       cache=(map [@p board-name] cached-board)
       subs=(set [@p board-name])
@@ -270,6 +338,8 @@
       post-seen=(map [@p board-name post-id] @da)
       pending-swaps=(map @t pending-swap)
       pending-melts=(map @t pending-melt)
+      pending-mints=(map @t pending-mint-quote)
+      pending-ln-invoices=(map @t pending-ln-invoice)
   ==
 ::
 +$  card  card:agent:gall
@@ -329,7 +399,7 @@
 --
 ::
 %-  agent:dbug
-=|  state-11
+=|  state-12
 =*  state  -
 ^-  agent:gall
 |_  =bowl:gall
@@ -364,7 +434,7 @@
       ^-  cached-board
       =/  ni=board-info  [name.info.oc title.info.oc description.info.oc host.info.oc created.info.oc default-role.info.oc %.n]
       [ni roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %3
     =/  new-boards=(map board-name board)
@@ -377,7 +447,7 @@
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %4
     =/  new-boards=(map board-name board)
@@ -390,7 +460,7 @@
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %5
     =/  new-boards=(map board-name board)
@@ -403,7 +473,7 @@
       |=  oc=s6-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
-    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %6
     =/  new-boards=(map board-name board)
@@ -416,7 +486,7 @@
       |=  oc=s6-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
-    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %7
     =/  new-boards=(map board-name board)
@@ -429,42 +499,71 @@
       |=  oc=s7-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ ~]
-    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %8
     =/  new-boards=(map board-name board)
       %-  ~(run by boards.old)
       |=  ob=s8-board
       ^-  board
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob payment.ob paid.ob *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s9-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
-    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %9
-    ::  migrate cache: add payment field
+    ::  migrate cache and boards: add payment.mint field
+    =/  new-boards=(map board-name board)
+      %-  ~(run by boards.old)
+      |=  ob=s11-board
+      ^-  board
+      =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s9-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
-    `this(state [%11 registry.old boards.old new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
   ::
       %10
-    ::  clear cache and re-subscribe to get payment config from hosts
+    ::  migrate boards, clear cache and re-subscribe
+    =/  new-boards=(map board-name board)
+      %-  ~(run by boards.old)
+      |=  ob=s11-board
+      ^-  board
+      =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob]
     =/  resub-cards=(list card)
       %+  turn  ~(tap in subs.old)
       |=  [host=@p name=board-name]
       [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
-    :_  this(state [%11 registry.old boards.old *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+    :_  this(state [%12 registry.old new-boards *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
     resub-cards
   ::
       %11
+    ::  migrate boards and cache: add mint field to payment-config
+    =/  new-boards=(map board-name board)
+      %-  ~(run by boards.old)
+      |=  ob=s11-board
+      ^-  board
+      =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob]
+    =/  new-cache=(map [@p board-name] cached-board)
+      %-  ~(run by cache.old)
+      |=  oc=s11-cached-board
+      ^-  cached-board
+      =/  new-pay=(unit payment-config)  ?~(payment.oc ~ `[price.u.payment.oc interval.u.payment.oc ~])
+      [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc new-pay paid-until.oc]
+    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old pending-swaps.old pending-melts.old *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+  ::
+      %12
     ::  clear stale pending ops — iris requests don't survive restart
-    `this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt)))
+    `this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt), pending-mints *(map @t pending-mint-quote), pending-ln-invoices *(map @t pending-ln-invoice)))
   ==
 ::
 ++  on-poke
@@ -685,6 +784,60 @@
       =/  new-brd  brd(wallet *(map @t (list cashu-proof)))
       ~&  >>>  [%cleared-wallet name.act]
       `this(boards (~(put by boards) name.act new-brd))
+    ::
+        %request-lightning-invoice
+      ::  remote user requests a Lightning invoice to pay for board access
+      ~&  >>>  [%ln-request-received name.act src.bowl nonce.act]
+      =/  brd  (~(get by boards) name.act)
+      ?~  brd
+        ~&  >>>  [%ln-invoice-no-board name.act src.bowl]
+        `this
+      =/  pay  payment.u.brd
+      ?~  pay
+        ~&  >>>  [%ln-invoice-no-payment name.act src.bowl]
+        `this
+      =/  mint-url  mint.u.pay
+      ?~  mint-url
+        ~&  >>>  [%ln-invoice-no-mint name.act src.bowl]
+        `this
+      =/  mint-clean=tape  (clean-mint-url:ca u.mint-url)
+      =/  mint-cord=@t  (crip mint-clean)
+      ::  check for cached keyset
+      =/  keyset-id=@t
+        =/  ks  ~(tap by mint-keysets.u.brd)
+        ?~  ks  ''
+        -.i.ks
+      ::  store pending mint quote
+      =/  nonce=@t  nonce.act
+      =.  pending-mints
+        %+  ~(put by pending-mints)  nonce
+        :*  src.bowl
+            name.act
+            mint-cord
+            ''
+            ''
+            price.u.pay
+            keyset-id
+            *@da
+            ?:(=('' keyset-id) %fetch-keys %quote)
+            *(list @t)
+            *(list @)
+        ==
+      ?:  =('' keyset-id)
+        ::  need to fetch keyset first
+        =/  keys-url=@t  (crip (weld mint-clean "/v1/keysets"))
+        ~&  >>>  [%ln-fetching-keysets keys-url]
+        :_  this
+        :~  [%pass /iris/mint-keys/[nonce] %arvo %i %request [%'GET' keys-url ~ ~] *outbound-config:iris]
+        ==
+      ::  have keyset — request mint quote
+      ~&  >>>  [%ln-requesting-quote keyset-id mint-cord]
+      =/  quote-body=@t  (en:json:html (build-mint-quote-request:ca price.u.pay 'sat'))
+      =/  quote-octs=octs  [(met 3 quote-body) quote-body]
+      =/  quote-url=@t  (crip (weld mint-clean "/v1/mint/quote/bolt11"))
+      :_  this
+      :~  [%pass /iris/mint-quote/[nonce] %arvo %i %request [%'POST' quote-url ~[['content-type' 'application/json']] `quote-octs] *outbound-config:iris]
+      ==
     ::
         %set-role
       =/  brd  (~(got by boards) name.act)
@@ -1215,6 +1368,14 @@
         ::  paywall check
         ?.  (has-paid-access our.bowl u.brd now.bowl)
           =/  pnd=?  =('payment' (~(gut by args) 'pending' ''))
+          =/  ln-nonce=@t  (~(gut by args) 'nonce' '')
+          =/  ln-pending=?  =('lightning' (~(gut by args) 'pending' ''))
+          ?:  &(ln-pending !=('' ln-nonce))
+            =/  inv  (~(get by pending-ln-invoices) ln-nonce)
+            ?~  inv
+              (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
+            =/  bolt=(unit @t)  bolt11.u.inv
+            (send-html eyre-id 200 (render-lightning-invoice:fl host info.u.brd (need payment.u.brd) bolt dark))
           (send-html eyre-id 200 (render-paywall:fl host info.u.brd (need payment.u.brd) (~(get by paid.u.brd) our.bowl) dark pnd))
         =/  post-list=(list post)  ~(val by posts.u.brd)
         =/  im=?  (is-mod our.bowl u.brd)
@@ -1253,8 +1414,17 @@
           =/  bls=(unit @da)  (~(get by board-seen) [host name])
           =.  board-seen  (~(put by board-seen) [host name] now.bowl)
           (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.cb bls sidebar.u.cb))
-        ::  not paid or expired — show paywall
-        ::  if pending, re-subscribe to check if payment was processed
+        ::  not paid or expired — check for Lightning invoice pending
+        =/  ln-nonce=@t  (~(gut by args) 'nonce' '')
+        =/  ln-pending=?  =('lightning' (~(gut by args) 'pending' ''))
+        ?:  &(ln-pending !=('' ln-nonce))
+          =/  inv  (~(get by pending-ln-invoices) ln-nonce)
+          ?~  inv
+            ::  entry gone — payment completed or expired, redirect to board
+            (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
+          =/  bolt=(unit @t)  bolt11.u.inv
+          (send-html eyre-id 200 (render-lightning-invoice:fl host info.u.cb u.payment.u.cb bolt dark))
+        ::  show paywall — if pending, re-subscribe to check if payment was processed
         =/  =response-header:http  [200 ~[['content-type' 'text/html'] ['cache-control' 'no-store, no-cache, must-revalidate'] ['pragma' 'no-cache']]]
         =/  data=octs  (manx-to-octs:fl (render-paywall:fl host info.u.cb u.payment.u.cb paid-until.u.cb dark pnd))
         =/  http-cards=(list card)
@@ -1295,7 +1465,11 @@
           (send-html eyre-id 404 (render-error:fl "board not found" dark))
         ?.  (is-mod our.bowl u.brd)
           (send-html eyre-id 403 (render-error:fl "not a moderator" dark))
-        =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
+        =/  pml=?
+          ?&  =('melt' (~(gut by args) 'pending' ''))
+              %+  lien  ~(val by pending-melts)
+              |=(pm=pending-melt =(name name.pm))
+          ==
         =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
         (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml sav))
       ::  remote board - check my-roles
@@ -1308,6 +1482,46 @@
       =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
       =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
       (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml sav))
+    ::  backup wallet proofs: /b/{host}/{name}/mod/backup-proofs
+        [%b @ @ %mod %backup-proofs ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      ?.  =(host our.bowl)
+        (send-html eyre-id 403 (render-error:fl "only host can backup proofs" dark))
+      =/  brd  (~(get by boards) name)
+      ?~  brd
+        (send-html eyre-id 404 (render-error:fl "board not found" dark))
+      ?.  (is-mod our.bowl u.brd)
+        (send-html eyre-id 403 (render-error:fl "not a moderator" dark))
+      =/  proof-json=json
+        :-  %a
+        %-  zing
+        %+  turn  ~(tap by wallet.u.brd)
+        |=  [mint=@t proofs=(list cashu-proof)]
+        ^-  (list json)
+        %+  turn  proofs
+        |=  p=cashu-proof
+        %-  pairs:enjs:format
+        :~  ['mint' s+mint]
+            ['amount' (numb:enjs:format amount.p)]
+            ['id' s+id.p]
+            ['secret' s+secret.p]
+            ['C' s+c.p]
+        ==
+      =/  txt=@t  (en:json:html proof-json)
+      =/  fname=@t  (crip "{(trip name)}-proofs.json")
+      =/  =response-header:http
+        :-  200
+        :~  ['content-type' 'application/json']
+            ['content-disposition' (cat 3 'attachment; filename="' (cat 3 fname '"'))]
+            ['cache-control' 'no-store']
+        ==
+      =/  data=octs  [(met 3 txt) txt]
+      :_  this
+      :~  [%give %fact ~[/http-response/[eyre-id]] %http-response-header !>(response-header)]
+          [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
+          [%give %kick ~[/http-response/[eyre-id]] ~]
+      ==
     ::  edit post form: /b/{host}/{name}/{post-id}/edit
         [%b @ @ @ %edit ~]
       =/  host=@p  (slav %p i.t.path)
@@ -1561,6 +1775,22 @@
         :~  [%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)]
         ==
       [(weld pay-cards redir) this]
+    ::  pay with Lightning: POST /b/{host}/{name}/pay-lightning
+        [%b @ @ %pay-lightning ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      =/  nonce=@t  (scot %uv (sham [now.bowl our.bowl name eny.bowl]))
+      ::  store pending invoice locally
+      =.  pending-ln-invoices
+        (~(put by pending-ln-invoices) nonce [host name ~ 0 0])
+      ::  poke host and subscribe to invoice path
+      =/  =action  [%request-lightning-invoice name nonce]
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}?pending=lightning&nonce={(trip nonce)}")
+      =/  pay-cards=(list card)
+        :~  [%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)]
+            [%pass /invoice/[name]/[nonce] %agent [host %furum] %watch /invoice/[name]/[nonce]]
+        ==
+      [(weld pay-cards redir) this]
     ::  set payment config: POST /b/{host}/{name}/mod/payment
         [%b @ @ %mod %payment ~]
       =/  host=@p  (slav %p i.t.path)
@@ -1576,9 +1806,11 @@
         %+  roll  (trip interval-val)
         |=  [c=@ acc=@ud]
         (add (mul acc 10) (sub c '0'))
+      =/  mint-val=@t  (~(gut by form) 'mint-url' '')
+      =/  mint-opt=(unit @t)  ?:(=('' mint-val) ~ `mint-val)
       =/  pay=(unit payment-config)
         ?.  =('on' enabled)  ~
-        `[price (mul ~d1 days)]
+        `[price (mul ~d1 days) mint-opt]
       =/  =action  [%set-payment name pay]
       =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod?saved=payment")
       ?:  =(host our.bowl)
@@ -1833,6 +2065,22 @@
       (snoc init-cards [%give %kick ~ `src.bowl])
     :_  this
     init-cards
+    ::  Lightning invoice subscription
+    ::
+      [%invoice @ @ ~]
+    =/  name=board-name  i.t.path
+    =/  brd  (~(get by boards) name)
+    ?~  brd  `this
+    ?~  payment.u.brd  `this
+    ::  if there's already a pending mint for this nonce, send the invoice
+    =/  nonce=@t  i.t.t.path
+    =/  pending  (~(get by pending-mints) nonce)
+    ?~  pending  `this
+    ?:  =('' bolt11.u.pending)  `this
+    =/  upd=update  [%lightning-invoice nonce bolt11.u.pending amount.u.pending 0]
+    :_  this
+    :~  [%give %fact ~ %furum-update !>(upd)]
+    ==
   ==
 ::
 ++  on-leave
@@ -1915,6 +2163,38 @@
         %watch-ack
       ?~  p.sign  `this
       `this
+    ==
+    ::  Lightning invoice subscription responses
+    ::
+      [%invoice @ @ ~]
+    =/  name=board-name  i.t.wire
+    =/  nonce=@t  i.t.t.wire
+    ?+    -.sign  (on-agent:def wire sign)
+        %fact
+      ?+    p.cage.sign  `this
+          %furum-update
+        =/  upd  !<(update q.cage.sign)
+        ?.  ?=([%lightning-invoice *] upd)  `this
+        ::  store the invoice locally
+        =/  existing  (~(get by pending-ln-invoices) nonce)
+        ?~  existing  `this
+        `this(pending-ln-invoices (~(put by pending-ln-invoices) nonce u.existing(bolt11 `bolt11.upd, amount amount.upd, expiry expiry.upd)))
+      ==
+    ::
+        %kick
+      ::  host kicks /invoice after successful payment — re-subscribe to board for content
+      =/  inv  (~(get by pending-ln-invoices) nonce)
+      =.  pending-ln-invoices  (~(del by pending-ln-invoices) nonce)
+      ?~  inv  `this
+      :_  this
+      :~  [%pass /board/(scot %p host.u.inv)/[name] %agent [host.u.inv %furum] %leave ~]
+          [%pass /board/(scot %p host.u.inv)/[name] %agent [host.u.inv %furum] %watch /board/[name]]
+      ==
+    ::
+        %watch-ack
+      ?~  p.sign  `this
+      ::  watch failed — clean up
+      `this(pending-ln-invoices (~(del by pending-ln-invoices) nonce))
     ==
   ==
   ::
@@ -2049,6 +2329,10 @@
       :~  [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
           [%pass /board/(scot %p host)/[name] %agent [host %furum] %watch /board/[name]]
       ==
+    ::
+        %lightning-invoice
+      ::  handled via /invoice subscription, not board subscription
+      `this
     ==
   --
 ::
@@ -2360,6 +2644,346 @@
       ~&  [%ecash-melt-success name.u.pending]
       =.  pending-melts  (~(del by pending-melts) nonce)
       `this
+    ==
+  ::
+  ::  -- NUT-04 mint (Lightning invoice) handlers --
+  ::
+      [%iris %mint-keys @ ~]
+    ~&  >>>  [%ln-on-arvo-mint-keys wire]
+    =/  nonce=@t  i.t.t.wire
+    =/  pending  (~(get by pending-mints) nonce)
+    ?~  pending
+      ~&  >>>  [%ln-mint-keys-unknown-nonce nonce]
+      `this
+    ?.  ?=([%iris %http-response *] sign-arvo)
+      ~&  >>>  [%ln-mint-keys-bad-response name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  =client-response:iris  client-response.sign-arvo
+    ?.  ?=([%finished *] client-response)  `this
+    =/  response=response-header:http  response-header.client-response
+    =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
+    ?.  =(200 status-code.response)
+      ~&  >>>  [%ln-mint-keys-rejected name.u.pending status-code.response]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ?~  body
+      ~&  >>>  [%ln-mint-keys-empty name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  resp-json  (de:json:html q.u.body)
+    ?~  resp-json
+      ~&  >>>  [%ln-mint-keys-bad-json name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ::  parse /v1/keysets response: {keysets: [{id, unit, active, ...}]}
+    =/  jon  u.resp-json
+    ?.  ?=([%o *] jon)
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  ks  (~(get by p.jon) 'keysets')
+    ?~  ks
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ?.  ?=([%a *] u.ks)
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ::  find first active keyset with unit=sat
+    =/  matching=(list @t)
+      %+  murn  p.u.ks
+      |=  item=json
+      ^-  (unit @t)
+      ?.  ?=([%o *] item)  ~
+      =/  active  (~(get by p.item) 'active')
+      =/  unit-val  (~(get by p.item) 'unit')
+      =/  id-val  (~(get by p.item) 'id')
+      ?.  ?=([~ %b *] active)  ~
+      ?.  =(%.y p.u.active)  ~
+      ?.  ?=([~ %s *] unit-val)  ~
+      ?.  =('sat' p.u.unit-val)  ~
+      ?~  id-val  ~
+      ?.  ?=([%s *] u.id-val)  ~
+      (some p.u.id-val)
+    =/  kid=@t  ?~(matching '' i.matching)
+    ?:  =('' kid)
+      ~&  >>>  [%ln-mint-no-active-keyset name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ::  now fetch the actual keys for this keyset
+    =.  pending-mints
+      (~(put by pending-mints) nonce u.pending(keyset-id kid, step %quote))
+    =/  mint-clean=tape  (clean-mint-url:ca mint.u.pending)
+    =/  keys-url=@t  (crip (weld mint-clean "/v1/keys/{(trip kid)}"))
+    :_  this
+    :~  [%pass /iris/mint-keyset/[nonce] %arvo %i %request [%'GET' keys-url ~ ~] *outbound-config:iris]
+    ==
+  ::
+      [%iris %mint-keyset @ ~]
+    =/  nonce=@t  i.t.t.wire
+    =/  pending  (~(get by pending-mints) nonce)
+    ?~  pending
+      `this
+    ?.  ?=([%iris %http-response *] sign-arvo)
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  =client-response:iris  client-response.sign-arvo
+    ?.  ?=([%finished *] client-response)  `this
+    =/  response=response-header:http  response-header.client-response
+    =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
+    ?.  =(200 status-code.response)
+      ~&  >>>  [%ln-mint-keyset-rejected name.u.pending status-code.response]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ?~  body
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  resp-json  (de:json:html q.u.body)
+    ?~  resp-json
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ::  parse keys and cache them
+    =/  jon  u.resp-json
+    ?.  ?=([%o *] jon)
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  keys-val=(unit json)
+      =/  ks  (~(get by p.jon) 'keysets')
+      ?~  ks  (~(get by p.jon) 'keys')
+      ?.  ?=([%a *] u.ks)  (~(get by p.jon) 'keys')
+      =/  first  (snag 0 p.u.ks)
+      ?.  ?=([%o *] first)  (~(get by p.jon) 'keys')
+      (~(get by p.first) 'keys')
+    ?~  keys-val
+      ~&  >>>  [%ln-mint-keyset-no-keys name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ?.  ?=([%o *] u.keys-val)
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  key-map=(map @ud @t)
+      %-  ~(rep by p.u.keys-val)
+      |=  [[amt-key=@t hex-val=json] acc=(map @ud @t)]
+      ?.  ?=([%s *] hex-val)  acc
+      =/  amt=@ud  (roll (trip amt-key) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
+      ?:  =(0 amt)  acc
+      (~(put by acc) amt p.hex-val)
+    =/  brd  (~(get by boards) name.u.pending)
+    ?~  brd
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  new-brd  u.brd(mint-keysets (~(put by mint-keysets.u.brd) keyset-id.u.pending key-map))
+    =.  boards  (~(put by boards) name.u.pending new-brd)
+    ::  now request mint quote
+    =/  quote-body=@t  (en:json:html (build-mint-quote-request:ca amount.u.pending 'sat'))
+    =/  quote-octs=octs  [(met 3 quote-body) quote-body]
+    =/  mint-clean=tape  (clean-mint-url:ca mint.u.pending)
+    =/  quote-url=@t  (crip (weld mint-clean "/v1/mint/quote/bolt11"))
+    :_  this
+    :~  [%pass /iris/mint-quote/[nonce] %arvo %i %request [%'POST' quote-url ~[['content-type' 'application/json']] `quote-octs] *outbound-config:iris]
+    ==
+  ::
+      [%iris %mint-quote @ ~]
+    ~&  >>>  [%ln-on-arvo-mint-quote wire]
+    =/  nonce=@t  i.t.t.wire
+    =/  pending  (~(get by pending-mints) nonce)
+    ?~  pending
+      ~&  >>>  [%ln-mint-quote-unknown-nonce nonce]
+      `this
+    ?.  ?=([%iris %http-response *] sign-arvo)
+      ~&  >>>  [%ln-mint-quote-bad-response name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  =client-response:iris  client-response.sign-arvo
+    ?.  ?=([%finished *] client-response)  `this
+    =/  response=response-header:http  response-header.client-response
+    =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
+    ?.  =(200 status-code.response)
+      =/  err-body=@t
+        ?~  body  'no body'
+        (crip (scag 500 (trip q.u.body)))
+      ~&  >>>  [%ln-mint-quote-rejected name.u.pending status-code.response err-body]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ?~  body
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  resp-json  (de:json:html q.u.body)
+    ?~  resp-json
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  quote-result  (parse-mint-quote:ca u.resp-json)
+    ?~  quote-result
+      ~&  >>>  [%ln-mint-quote-bad-format name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ::  convert unix expiry to @da (unix epoch = ~1970.1.1)
+    =/  expiry-da=@da  (add ~1970.1.1 (mul expiry.u.quote-result (bex 64)))
+    ::  update pending state
+    =.  pending-mints
+      %+  ~(put by pending-mints)  nonce
+      u.pending(quote-id quote.u.quote-result, bolt11 request.u.quote-result, expiry expiry-da, step %check-quote)
+    ::  send invoice to payer via subscription
+    =/  invoice-path=path  /invoice/[name.u.pending]/[nonce]
+    =/  upd=update  [%lightning-invoice nonce request.u.quote-result amount.u.pending expiry.u.quote-result]
+    ::  start polling timer
+    :_  this
+    :~  [%give %fact ~[invoice-path] %furum-update !>(upd)]
+        [%pass /timer/mint/[nonce] %arvo %b %wait (add now.bowl ~s5)]
+    ==
+  ::
+      [%timer %mint @ ~]
+    =/  nonce=@t  i.t.t.wire
+    =/  pending  (~(get by pending-mints) nonce)
+    ?~  pending
+      `this
+    ?.  ?=([%behn %wake *] sign-arvo)
+      `this
+    ::  check if expired
+    ?:  (gth now.bowl expiry.u.pending)
+      ~&  >>>  [%ln-mint-expired name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ::  poll quote status
+    =/  mint-clean=tape  (clean-mint-url:ca mint.u.pending)
+    =/  check-url=@t  (crip (weld mint-clean "/v1/mint/quote/bolt11/{(trip quote-id.u.pending)}"))
+    :_  this
+    :~  [%pass /iris/mint-check/[nonce] %arvo %i %request [%'GET' check-url ~ ~] *outbound-config:iris]
+    ==
+  ::
+      [%iris %mint-check @ ~]
+    =/  nonce=@t  i.t.t.wire
+    =/  pending  (~(get by pending-mints) nonce)
+    ?~  pending
+      `this
+    ?.  ?=([%iris %http-response *] sign-arvo)
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  =client-response:iris  client-response.sign-arvo
+    ?.  ?=([%finished *] client-response)  `this
+    =/  response=response-header:http  response-header.client-response
+    =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
+    ?.  =(200 status-code.response)
+      ::  check failed, retry later
+      :_  this
+      :~  [%pass /timer/mint/[nonce] %arvo %b %wait (add now.bowl ~s5)]
+      ==
+    ?~  body
+      :_  this
+      :~  [%pass /timer/mint/[nonce] %arvo %b %wait (add now.bowl ~s5)]
+      ==
+    =/  resp-json  (de:json:html q.u.body)
+    ?~  resp-json
+      :_  this
+      :~  [%pass /timer/mint/[nonce] %arvo %b %wait (add now.bowl ~s5)]
+      ==
+    =/  quote-result  (parse-mint-quote:ca u.resp-json)
+    ?~  quote-result
+      :_  this
+      :~  [%pass /timer/mint/[nonce] %arvo %b %wait (add now.bowl ~s5)]
+      ==
+    ?:  =(state.u.quote-result 'PAID')
+      ::  invoice paid — generate blinded outputs and mint tokens
+      =/  brd  (~(get by boards) name.u.pending)
+      ?~  brd
+        =.  pending-mints  (~(del by pending-mints) nonce)
+        `this
+      =/  amounts=(list @ud)  (split-amount:ca amount.u.pending)
+      =/  idx=@ud  0
+      =/  secrets=(list @t)  ~
+      =/  bfactors=(list @)  ~
+      =/  mint-outputs=(list [amount=@ud id=@t b-hex=@t])  ~
+      |-  ^-  (quip card _this)
+      ?:  (gte idx (lent amounts))
+        ::  all outputs generated, send mint request
+        =/  mint-req=json  (build-mint-request:ca quote-id.u.pending (flop mint-outputs))
+        =/  mint-body=@t  (en:json:html mint-req)
+        =/  mint-octs=octs  [(met 3 mint-body) mint-body]
+        =/  mint-clean=tape  (clean-mint-url:ca mint.u.pending)
+        =/  mint-url=@t  (crip (weld mint-clean "/v1/mint/bolt11"))
+        =.  pending-mints
+          (~(put by pending-mints) nonce u.pending(step %mint-tokens, secrets (flop secrets), blinding-factors (flop bfactors)))
+        :_  this
+        :~  [%pass /iris/mint-exec/[nonce] %arvo %i %request [%'POST' mint-url ~[['content-type' 'application/json']] `mint-octs] *outbound-config:iris]
+        ==
+      =/  amt=@ud  (snag idx amounts)
+      =/  eny-seed=@  (sham [eny.bowl nonce idx now.bowl])
+      =/  [b-hex=@t secret=@t blinding-factor=@]  (make-output:ca amt keyset-id.u.pending eny-seed)
+      %=  $
+        idx  +(idx)
+        secrets  [secret secrets]
+        bfactors  [blinding-factor bfactors]
+        mint-outputs  [[amt keyset-id.u.pending b-hex] mint-outputs]
+      ==
+    ::  not paid yet — schedule another check
+    :_  this
+    :~  [%pass /timer/mint/[nonce] %arvo %b %wait (add now.bowl ~s5)]
+    ==
+  ::
+      [%iris %mint-exec @ ~]
+    =/  nonce=@t  i.t.t.wire
+    =/  pending  (~(get by pending-mints) nonce)
+    ?~  pending
+      `this
+    ?.  ?=([%iris %http-response *] sign-arvo)
+      ~&  >>>  [%ln-mint-exec-bad-response name.u.pending]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  =client-response:iris  client-response.sign-arvo
+    ?.  ?=([%finished *] client-response)  `this
+    =/  response=response-header:http  response-header.client-response
+    =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
+    ?.  =(200 status-code.response)
+      =/  err-body=@t
+        ?~  body  'no body'
+        (crip (scag 500 (trip q.u.body)))
+      ~&  >>>  [%ln-mint-exec-rejected name.u.pending status-code.response err-body]
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ?~  body
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  resp-json  (de:json:html q.u.body)
+    ?~  resp-json
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    ::  parse signatures and unblind (same format as swap response)
+    =/  sigs  (parse-swap-response:ca u.resp-json)
+    =/  brd  (~(get by boards) name.u.pending)
+    ?~  brd
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this
+    =/  key-map=(map @ud @t)  (~(gut by mint-keysets.u.brd) keyset-id.u.pending *(map @ud @t))
+    =/  mint-keys=(map @ud [x=@ y=@])
+      %-  ~(run by key-map)
+      |=  hex=@t
+      =/  result  (mule |.((hex-to-point:ca hex)))
+      ?:(?=([%& *] result) p.result [0 0])
+    =/  new-proofs=(list cashu-proof)
+      %:  finalize-proofs:ca
+        sigs
+        secrets.u.pending
+        blinding-factors.u.pending
+        mint-keys
+      ==
+    ~&  >>>  [%ln-mint-proofs (turn new-proofs |=(p=cashu-proof [amount.p id.p secret.p c.p]))]
+    ::  add proofs to wallet
+    =/  existing-proofs=(list cashu-proof)  (~(gut by wallet.u.brd) mint.u.pending ~)
+    =/  updated-wallet  (~(put by wallet.u.brd) mint.u.pending (weld existing-proofs new-proofs))
+    =/  new-brd  u.brd(wallet updated-wallet)
+    ::  grant paid access
+    =/  pay  payment.new-brd
+    ?~  pay
+      =.  pending-mints  (~(del by pending-mints) nonce)
+      `this(boards (~(put by boards) name.u.pending new-brd))
+    =/  existing  (~(get by paid.new-brd) who.u.pending)
+    =/  base=@da  ?~(existing now.bowl ?:((gth u.existing now.bowl) u.existing now.bowl))
+    =/  paid-until=@da  (add base interval.u.pay)
+    =/  final-brd  new-brd(paid (~(put by paid.new-brd) who.u.pending paid-until))
+    =.  pending-mints  (~(del by pending-mints) nonce)
+    ~&  >>>  [%ln-mint-success name.u.pending who.u.pending (lent new-proofs) paid-until]
+    :_  this(boards (~(put by boards) name.u.pending final-brd))
+    :~  (give-board-update name.u.pending [%paid-update who.u.pending paid-until])
+        [%give %kick ~[/invoice/[name.u.pending]/[nonce]] ~]
     ==
   ==
 ::

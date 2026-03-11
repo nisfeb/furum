@@ -58,6 +58,7 @@
 +$  payment-config
   $:  price=@ud
       interval=@dr
+      mint=(unit @t)
   ==
 ::
 ::  a stored cashu proof (host wallet)
@@ -134,6 +135,7 @@
       [%set-payment name=board-name payment=(unit payment-config)]
       [%submit-payment name=board-name mint=@t tokens=@t]
       [%melt-to-lightning name=board-name mint=@t invoice=@t]
+      [%request-lightning-invoice name=board-name nonce=@t]
       [%revoke-paid name=board-name who=@p]
       [%clear-wallet name=board-name]
       ::  subscriptions
@@ -177,6 +179,7 @@
       [%sidebar-update sidebar=@t]
       [%payment-config-update payment=(unit payment-config)]
       [%paid-update who=@p paid-until=@da]
+      [%lightning-invoice nonce=@t bolt11=@t amount=@ud expiry=@ud]
   ==
 ::
 ::  registry updates: subscription facts from the registry
