@@ -104,6 +104,7 @@
       comments=(map post-id (map comment-id comment))
       pinned=(set post-id)
       sidebar=@t
+      payment=(unit payment-config)
       paid-until=(unit @da)
   ==
 ::

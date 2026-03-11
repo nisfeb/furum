@@ -1545,7 +1545,7 @@
   [(crip "furum - {(trip name.board-info)} - payment required") paywall-content `[board-path (trip title.board-info)] %.n dark]
 ::
 ++  render-mod
-  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=?]
+  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved-payment=?]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -1627,10 +1627,16 @@
     ?:  pay-enabled
       ;input(type "checkbox", name "enabled", value "on", checked "checked");
     ;input(type "checkbox", name "enabled", value "on");
+  =/  saved-banner=manx
+    ?.  saved-payment  ;span;
+    :-  [%div ~[['class' "paywall-info"]]]
+    :~  ;/("Payment config saved successfully.")
+    ==
   =/  payment-section=manx
     ?.  is-host  ;span;
     ;div
       ;h4: Paid Access
+      ;+  saved-banner
       ;p.me: Enable paid access to require ecash tokens for board access. Paid boards cannot be public.
       ;form(method "post", action "{board-path}/mod/payment")
         ;div

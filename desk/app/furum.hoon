@@ -90,6 +90,15 @@
       payment=(unit payment-config)
       paid=(map @p @da)
   ==
++$  s9-cached-board
+  $:  info=board-info
+      roles=(map @p role)
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+      pinned=(set post-id)
+      sidebar=@t
+      paid-until=(unit @da)
+  ==
 ::
 +$  versioned-state
   $%  state-2
@@ -100,6 +109,8 @@
       state-7
       state-8
       state-9
+      state-10
+      state-11
   ==
 ::
 +$  state-2
@@ -180,7 +191,7 @@
   $:  %8
       registry=(map board-name directory-entry)
       boards=(map board-name s8-board)
-      cache=(map [@p board-name] cached-board)
+      cache=(map [@p board-name] s9-cached-board)
       subs=(set [@p board-name])
       dark-mode=(set @p)
       registry-admins=(set @p)
@@ -215,6 +226,38 @@
 ::
 +$  state-9
   $:  %9
+      registry=(map board-name directory-entry)
+      boards=(map board-name board)
+      cache=(map [@p board-name] s9-cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
+      board-seen=(map [@p board-name] @da)
+      post-seen=(map [@p board-name post-id] @da)
+      pending-swaps=(map @t pending-swap)
+      pending-melts=(map @t pending-melt)
+  ==
+::
++$  state-10
+  $:  %10
+      registry=(map board-name directory-entry)
+      boards=(map board-name board)
+      cache=(map [@p board-name] cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
+      board-seen=(map [@p board-name] @da)
+      post-seen=(map [@p board-name post-id] @da)
+      pending-swaps=(map @t pending-swap)
+      pending-melts=(map @t pending-melt)
+  ==
+::
++$  state-11
+  $:  %11
       registry=(map board-name directory-entry)
       boards=(map board-name board)
       cache=(map [@p board-name] cached-board)
@@ -286,7 +329,7 @@
 --
 ::
 %-  agent:dbug
-=|  state-9
+=|  state-11
 =*  state  -
 ^-  agent:gall
 |_  =bowl:gall
@@ -320,8 +363,8 @@
       |=  oc=old-cached-board
       ^-  cached-board
       =/  ni=board-info  [name.info.oc title.info.oc description.info.oc host.info.oc created.info.oc default-role.info.oc %.n]
-      [ni roles.oc posts.oc comments.oc *(set post-id) '' ~]
-    `this(state [%9 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+      [ni roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
+    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
   ::
       %3
     =/  new-boards=(map board-name board)
@@ -333,8 +376,8 @@
       %-  ~(run by cache.old)
       |=  oc=s4-cached-board
       ^-  cached-board
-      [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~]
-    `this(state [%9 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+      [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
+    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
   ::
       %4
     =/  new-boards=(map board-name board)
@@ -346,8 +389,8 @@
       %-  ~(run by cache.old)
       |=  oc=s4-cached-board
       ^-  cached-board
-      [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~]
-    `this(state [%9 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+      [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
+    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
   ::
       %5
     =/  new-boards=(map board-name board)
@@ -359,8 +402,8 @@
       %-  ~(run by cache.old)
       |=  oc=s6-cached-board
       ^-  cached-board
-      [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~]
-    `this(state [%9 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
+      [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
+    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt)])
   ::
       %6
     =/  new-boards=(map board-name board)
@@ -372,8 +415,8 @@
       %-  ~(run by cache.old)
       |=  oc=s6-cached-board
       ^-  cached-board
-      [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~]
-    `this(state [%9 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+      [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
+    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
   ::
       %7
     =/  new-boards=(map board-name board)
@@ -385,8 +428,8 @@
       %-  ~(run by cache.old)
       |=  oc=s7-cached-board
       ^-  cached-board
-      [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~]
-    `this(state [%9 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+      [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ ~]
+    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
   ::
       %8
     =/  new-boards=(map board-name board)
@@ -394,9 +437,32 @@
       |=  ob=s8-board
       ^-  board
       [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob payment.ob paid.ob *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
-    `this(state [%9 registry.old new-boards cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+    =/  new-cache=(map [@p board-name] cached-board)
+      %-  ~(run by cache.old)
+      |=  oc=s9-cached-board
+      ^-  cached-board
+      [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
+    `this(state [%11 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
   ::
-    %9
+      %9
+    ::  migrate cache: add payment field
+    =/  new-cache=(map [@p board-name] cached-board)
+      %-  ~(run by cache.old)
+      |=  oc=s9-cached-board
+      ^-  cached-board
+      [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
+    `this(state [%11 registry.old boards.old new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+  ::
+      %10
+    ::  clear cache and re-subscribe to get payment config from hosts
+    =/  resub-cards=(list card)
+      %+  turn  ~(tap in subs.old)
+      |=  [host=@p name=board-name]
+      [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
+    :_  this(state [%11 registry.old boards.old *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
+    resub-cards
+  ::
+      %11
     ::  clear stale pending ops — iris requests don't survive restart
     `this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt)))
   ==
@@ -1013,6 +1079,13 @@
             (turn ~(val by posts.u.brd) |=(p=post [host name p]))
           =/  cb  (~(get by cache) [host name])
           ?~  cb  ~
+          ::  skip paid boards we haven't paid for
+          ?:  ?&  ?=(^ payment.u.cb)
+                  ?|  ?=(~ paid-until.u.cb)
+                      (lte u.paid-until.u.cb now.bowl)
+                  ==
+              ==
+            ~
           (turn ~(val by posts.u.cb) |=(p=post [host name p]))
         =/  pg  (parse-page:fl args)
         (send-html eyre-id 200 (render-feed:fl feed-posts our.bowl now.bowl dark pg board-seen))
@@ -1148,10 +1221,13 @@
             [%give %kick ~[/http-response/[eyre-id]] ~]
         ==
       ::  paywall check for remote cached board
-      ?.  ?=(~ paid-until.u.cb)
-        ::  has paid-until field — check expiration
-        ?:  (gth (need paid-until.u.cb) now.bowl)
-          ::  still valid, proceed
+      =/  pnd=?  =('payment' (~(gut by args) 'pending' ''))
+      ?:  ?=(^ payment.u.cb)
+        ::  board has payment config — check if we've paid
+        ?:  ?&  ?=(^ paid-until.u.cb)
+                (gth u.paid-until.u.cb now.bowl)
+            ==
+          ::  paid and not expired, show board
           =/  post-list=(list post)  ~(val by posts.u.cb)
           =/  mr  (~(get by my-roles) [host name])
           =/  im=?  ?~(mr %.n =(u.mr %mod))
@@ -1161,10 +1237,9 @@
           =/  bls=(unit @da)  (~(get by board-seen) [host name])
           =.  board-seen  (~(put by board-seen) [host name] now.bowl)
           (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.cb bls sidebar.u.cb))
-        ::  expired — but we don't have payment config cached, show generic paywall
-        =/  pnd=?  =('payment' (~(gut by args) 'pending' ''))
-        (send-html eyre-id 200 (render-paywall:fl host info.u.cb [0 ~s0] paid-until.u.cb dark pnd))
-      ::  no paid-until means either free board or mod — proceed normally
+        ::  not paid or expired — show paywall
+        (send-html eyre-id 200 (render-paywall:fl host info.u.cb u.payment.u.cb paid-until.u.cb dark pnd))
+      ::  no payment config — free board, show normally
       =/  post-list=(list post)  ~(val by posts.u.cb)
       =/  mr  (~(get by my-roles) [host name])
       =/  im=?  ?~(mr %.n =(u.mr %mod))
@@ -1191,7 +1266,8 @@
         ?.  (is-mod our.bowl u.brd)
           (send-html eyre-id 403 (render-error:fl "not a moderator" dark))
         =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
-        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml))
+        =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
+        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml sav))
       ::  remote board - check my-roles
       =/  mr  (~(get by my-roles) [host name])
       ?.  ?~(mr %.n =(u.mr %mod))
@@ -1200,7 +1276,8 @@
       ?~  cb
         (send-html eyre-id 404 (render-error:fl "board not found in cache" dark))
       =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
-      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml))
+      =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
+      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml sav))
     ::  edit post form: /b/{host}/{name}/{post-id}/edit
         [%b @ @ @ %edit ~]
       =/  host=@p  (slav %p i.t.path)
@@ -1254,6 +1331,13 @@
             [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`(octs))]
             [%give %kick ~[/http-response/[eyre-id]] ~]
         ==
+      ::  paywall check for remote post detail
+      ?:  ?&  ?=(^ payment.u.cb)
+              ?|  ?=(~ paid-until.u.cb)
+                  (lte u.paid-until.u.cb now.bowl)
+              ==
+          ==
+        (send-html eyre-id 200 (render-paywall:fl host info.u.cb u.payment.u.cb paid-until.u.cb dark %.n))
       =/  pst  (~(get by posts.u.cb) pid)
       ?~  pst
         (send-html eyre-id 404 (render-error:fl "post not found" dark))
@@ -1441,7 +1525,12 @@
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
-      [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
+      ::  re-subscribe so we receive %paid-update after host processes payment
+      =/  pay-cards=(list card)
+        :~  [%pass /board/(scot %p host)/[name] %agent [host %furum] %watch /board/[name]]
+            [%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)]
+        ==
+      [(weld pay-cards redir) this]
     ::  set payment config: POST /b/{host}/{name}/mod/payment
         [%b @ @ %mod %payment ~]
       =/  host=@p  (slav %p i.t.path)
@@ -1461,7 +1550,7 @@
         ?.  =('on' enabled)  ~
         `[price (mul ~d1 days)]
       =/  =action  [%set-payment name pay]
-      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod")
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod?saved=payment")
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
@@ -1704,10 +1793,15 @@
     =/  sb=@t
       ?.  has-access  ''
       sidebar.brd
+    =/  init-cards=(list card)
+      :~  [%give %fact ~ %furum-update !>(`update`[%initial info.brd roles.brd post-list cmts pins sb payment.brd sub-paid-until])]
+          [%give %fact ~ %furum-update !>(`update`[%role-update src.bowl `subscriber-role])]
+      ==
+    ::  kick unpaid subscribers so they don't receive ongoing content updates
+    =?  init-cards  &(?=(^ payment.brd) !has-access)
+      (snoc init-cards [%give %kick ~ `src.bowl])
     :_  this
-    :~  [%give %fact ~ %furum-update !>(`update`[%initial info.brd roles.brd post-list cmts pins sb payment.brd sub-paid-until])]
-        [%give %fact ~ %furum-update !>(`update`[%role-update src.bowl `subscriber-role])]
-    ==
+    init-cards
   ==
 ::
 ++  on-leave
@@ -1774,6 +1868,15 @@
       ==
     ::
         %kick
+      ::  don't auto-resub if we're kicked from a paid board we haven't paid for
+      =/  cb  (~(get by cache) [host name])
+      ?:  ?&  ?=(^ cb)
+              ?=(^ payment.u.cb)
+              ?|  ?=(~ paid-until.u.cb)
+                  (lte u.paid-until.u.cb now.bowl)
+              ==
+          ==
+        `this
       :_  this
       :~  [%pass /board/(scot %p host)/[name] %agent [host %furum] %watch /board/[name]]
       ==
@@ -1823,7 +1926,7 @@
         |=  [p=post acc=(map post-id post)]
         (~(put by acc) id.p p)
       =/  =cached-board
-        [info.upd roles.upd post-map comments.upd pinned.upd sidebar.upd paid-until.upd]
+        [info.upd roles.upd post-map comments.upd pinned.upd sidebar.upd payment.upd paid-until.upd]
       `this(cache (~(put by cache) key cached-board), my-roles (~(put by my-roles) key default-role.info.upd))
     ::
         %new-post
@@ -1902,7 +2005,8 @@
       `this(cache (~(put by cache) key cb(sidebar sidebar.upd)))
     ::
         %payment-config-update
-      `this
+      =/  cb  (~(got by cache) key)
+      `this(cache (~(put by cache) key cb(payment payment.upd)))
     ::
         %paid-update
       ?.  =(who.upd our.bowl)  `this
