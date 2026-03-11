@@ -500,19 +500,24 @@
       =/  brd  (~(got by boards) name.act)
       =/  pay  payment.brd
       ?~  pay
-        ~|(%board-not-paid !!)
+        ~&  >>>  [%submit-payment-board-not-paid name.act src.bowl]
+        `this
       ::  parse token JSON to extract proofs and keyset id
       =/  maybe-json  (de:json:html tokens.act)
       ?~  maybe-json
-        ~|(%invalid-token-json !!)
+        ~&  >>>  [%submit-payment-invalid-json name.act src.bowl]
+        `this
       =/  jon  u.maybe-json
       ?.  ?=([%o *] jon)
-        ~|(%expected-json-object !!)
+        ~&  >>>  [%submit-payment-expected-object name.act src.bowl]
+        `this
       =/  maybe-inputs  (~(get by p.jon) 'inputs')
       ?~  maybe-inputs
-        ~|(%missing-inputs !!)
+        ~&  >>>  [%submit-payment-missing-inputs name.act src.bowl]
+        `this
       ?.  ?=([%a *] u.maybe-inputs)
-        ~|(%inputs-not-array !!)
+        ~&  >>>  [%submit-payment-inputs-not-array name.act src.bowl]
+        `this
       ::  sum amounts and extract keyset id from first proof
       =/  total=@ud  0
       =/  keyset-id=@t  ''
@@ -536,7 +541,9 @@
       =.  total  tot.total-and-kid
       =.  keyset-id  kid.total-and-kid
       ::  reject if total < price
-      ?>  (gte total price.u.pay)
+      ?.  (gte total price.u.pay)
+        ~&  >>>  [%submit-payment-insufficient name.act src.bowl total price.u.pay]
+        `this
       ::  generate nonce for tracking
       =/  nonce=@t  (scot %uv (sham [now.bowl src.bowl name.act eny.bowl]))
       ::  clean mint URL
@@ -2013,10 +2020,19 @@
     ?~  pending
       ~&  >>>  [%ecash-melt-unknown-nonce nonce]
       `this
+    =/  restore-melt-proofs
+      |=  pm=pending-melt
+      ^-  (quip card _this)
+      ?.  =(%execute step.pm)  `this
+      =/  brd  (~(get by boards) name.pm)
+      ?~  brd  `this
+      =/  existing=(list cashu-proof)  (~(gut by wallet.u.brd) mint.pm ~)
+      =/  new-brd  u.brd(wallet (~(put by wallet.u.brd) mint.pm (weld existing proofs-used.pm)))
+      `this(boards (~(put by boards) name.pm new-brd))
     ?.  ?=([%iris %http-response *] sign-arvo)
       ~&  >>>  [%ecash-melt-bad-response name.u.pending]
       =.  pending-melts  (~(del by pending-melts) nonce)
-      `this
+      (restore-melt-proofs u.pending)
     =/  =client-response:iris  client-response.sign-arvo
     ?.  ?=([%finished *] client-response)
       `this
@@ -2025,16 +2041,16 @@
     ?.  =(200 status-code.response)
       ~&  >>>  [%ecash-melt-rejected name.u.pending status-code.response]
       =.  pending-melts  (~(del by pending-melts) nonce)
-      `this
+      (restore-melt-proofs u.pending)
     ?~  body
       ~&  >>>  [%ecash-melt-empty-response name.u.pending]
       =.  pending-melts  (~(del by pending-melts) nonce)
-      `this
+      (restore-melt-proofs u.pending)
     =/  resp-json  (de:json:html q.u.body)
     ?~  resp-json
       ~&  >>>  [%ecash-melt-invalid-json name.u.pending]
       =.  pending-melts  (~(del by pending-melts) nonce)
-      `this
+      (restore-melt-proofs u.pending)
     =/  jon  u.resp-json
     ?-    step.u.pending
         %quote
