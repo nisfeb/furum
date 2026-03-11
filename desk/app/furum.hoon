@@ -1101,7 +1101,8 @@
           (send-html eyre-id 404 (render-error:fl "board not found" dark))
         ::  paywall check
         ?.  (has-paid-access our.bowl u.brd now.bowl)
-          (send-html eyre-id 200 (render-paywall:fl host info.u.brd (need payment.u.brd) (~(get by paid.u.brd) our.bowl) dark))
+          =/  pnd=?  =('payment' (~(gut by args) 'pending' ''))
+          (send-html eyre-id 200 (render-paywall:fl host info.u.brd (need payment.u.brd) (~(get by paid.u.brd) our.bowl) dark pnd))
         =/  post-list=(list post)  ~(val by posts.u.brd)
         =/  im=?  (is-mod our.bowl u.brd)
         =/  srt  (parse-sort:fl args)
@@ -1137,7 +1138,8 @@
           =.  board-seen  (~(put by board-seen) [host name] now.bowl)
           (send-html eyre-id 200 (render-board:fl host info.u.cb post-list our.bowl now.bowl im %.y dark srt ifl pg pinned.u.cb bls sidebar.u.cb))
         ::  expired — but we don't have payment config cached, show generic paywall
-        (send-html eyre-id 200 (render-paywall:fl host info.u.cb [0 ~s0] paid-until.u.cb dark))
+        =/  pnd=?  =('payment' (~(gut by args) 'pending' ''))
+        (send-html eyre-id 200 (render-paywall:fl host info.u.cb [0 ~s0] paid-until.u.cb dark pnd))
       ::  no paid-until means either free board or mod — proceed normally
       =/  post-list=(list post)  ~(val by posts.u.cb)
       =/  mr  (~(get by my-roles) [host name])
@@ -1409,7 +1411,7 @@
       =/  mint=@t  (~(gut by form) 'mint' '')
       =/  tokens=@t  (~(gut by form) 'tokens' '')
       =/  =action  [%submit-payment name mint tokens]
-      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}?pending=payment")
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]

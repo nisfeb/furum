@@ -1421,14 +1421,24 @@
   ==
 ::
 ++  render-paywall
-  |=  [host=@p =board-info pay=payment-config expired=(unit @da) dark=?]
+  |=  [host=@p =board-info pay=payment-config expired=(unit @da) dark=? pending=?]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
   =/  price-text=tape  (a-co:co price.pay)
   =/  days=@ud  (div interval.pay ~d1)
   =/  days-text=tape  (a-co:co days)
+  =/  refresh-js=tape  (trip 'setTimeout(function(){location.reload()},3000)')
+  =/  refresh-node=manx  [[%script ~] [[[%$ [%$ refresh-js] ~] ~] ~]]
+  =/  pending-section=manx
+    ?.  pending  ;span;
+    :-  [%div ~[['class' "paywall-info"]]]
+    :~  ;p: Processing payment... This page will refresh automatically.
+        refresh-node
+    ==
   =/  status-msg=manx
+    ?:  pending
+      ;p.paywall-status: Payment submitted. Waiting for mint confirmation...
     ?~  expired
       ;p.paywall-status: This board requires payment to access.
     ;p.paywall-status: Your access has expired. Pay to renew.
@@ -1497,6 +1507,7 @@
     :~  ;h3: {(trip title.board-info)}
         ;p.me: {(trip description.board-info)}
         ;hr;
+        pending-section
         status-msg
         ;div.paywall-info
           ;p: Price: {price-text} sats for {days-text} days of access
