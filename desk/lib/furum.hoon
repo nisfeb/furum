@@ -47,8 +47,9 @@
          background: none; padding: 0; font-size: 18px; }
   .va:hover { color: #cc2020; }
   .rw { padding: 5px 0; display: flex; align-items: baseline; }
-  .rk { width: 36px; text-align: right; margin-right: 8px;
-         color: #5a7a8a; font-size: 15px; }
+  .rk { min-width: 24px; text-align: right; margin-right: 6px;
+         color: #5a7a8a; font-size: 15px; flex-shrink: 0; }
+  .rw > div { min-width: 0; flex: 1; }
   .score { display: inline; }
   textarea { width: 100%; max-width: 540px; height: 160px; font-family: monospace;
               font-size: 16px; }
@@ -165,6 +166,7 @@
   .wallet-entry p { margin: 4px 0; }
   .wallet-entry textarea { width: 100%; max-width: 500px; padding: 6px; font-size: 14px; }
   @media (max-width: 768px) {
+    .ct { padding: 8px; }
     .board-layout { flex-direction: column; }
     .board-sidebar { display: none; }
     .mobile-sidebar { display: block; }
@@ -661,6 +663,7 @@
         ;a(href "https://urbit.org/overview/running-urbit", style "color: #ffdede; text-decoration: none", target "_blank", rel "noopener noreferrer"): Get on Urbit
       ==
     ;span.dark-toggle
+      ;a(href "/apps/furum/guide", style "margin-right: 12px"): guide
       ;form(method "post", action "/apps/furum/dark-mode", style "display:inline")
         ;button(type "submit"): {toggle-label}
       ==
@@ -690,7 +693,7 @@
       ;meta(name "viewport", content "width=device-width, initial-scale=1");
       ;meta(name "apple-mobile-web-app-capable", content "yes");
       ;meta(name "apple-mobile-web-app-status-bar-style", content "black-translucent");
-      ;meta(name "theme-color", content "#cc2020");
+      ;meta(name "theme-color", content ?:(dark "#1a0808" "#cc2020"));
       ;link(rel "manifest", href "/apps/furum/manifest");
       ;link(rel "apple-touch-icon", href "/apps/furum/icon");
       ;link(rel "icon", type "image/svg+xml", href "/apps/furum/favicon");
@@ -1598,7 +1601,7 @@
       closeBtn.addEventListener('click',stopScan);
       function startScan(){
         if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-          alert('Camera access requires HTTPS. Please access your ship over HTTPS to use the QR scanner.');
+          alert('Camera access requires HTTPS. Please access your computer over HTTPS to use the QR scanner.');
           return;
         }
         frames=0;
@@ -1883,7 +1886,7 @@
   =/  role-form=manx
     ;form(method "post", action "{board-path}/mod/role")
       ;div
-        ;label: ship (@p)
+        ;label: computer (@p)
         ;br;
         ;input(type "text", name "who", required "", placeholder "~sampel-palnet");
       ==
@@ -2144,7 +2147,7 @@
       ;p.me: Only the registry host can add or remove delegates.
     ;form(method "post", action "/apps/furum/registry/add-admin")
       ;div
-        ;label: ship (@p)
+        ;label: computer (@p)
         ;br;
         ;input(type "text", name "who", required "", placeholder "~sampel-palnet");
       ==
@@ -2154,7 +2157,7 @@
   =/  admin-section=marl
     :~
       ;h4: Delegate Admins
-      ;p.me: These ships can curate and tag boards.
+      ;p.me: These computers can curate and tag boards.
       add-form
       admin-table
       ;hr;
@@ -2212,6 +2215,139 @@
     ==
   ==
 ::
+::  GUIDE PAGE (authenticated)
+::
+++  render-guide
+  |=  dark=?
+  ^-  manx
+  %-  page-shell
+  :*  'furum - guide'
+    ^-  marl
+    :~
+      ;div
+        ;h3: furum guide
+        ;p.me: Everything you need to know to use furum, the decentralized forum on Urbit.
+        ;hr;
+        ;h3: What is furum?
+        ;p
+          ;+  ;/("furum is a forum that runs on ")
+          ;a(href "https://urbit.org", target "_blank", rel "noopener noreferrer"): Urbit
+          ;+  ;/(", a peer-to-peer computing network. Every board is hosted on someone's personal server — no corporation in the middle. Think Reddit or Hacker News, but decentralized and uncensorable.")
+        ==
+        ;p: Boards sync directly between Urbit computers. When you follow a board hosted by someone else, your computer subscribes to theirs and receives updates in real time. Your computer stores its own copy of the data, so you can browse even when the host is offline.
+        ;hr;
+        ;h3: Getting around
+        ;h4: Feed
+        ;p: Your home page shows two views — feed and directory. The feed shows recent posts from boards you follow, all in one stream. This is your main timeline.
+        ;h4: Directory
+        ;p: The directory lists all boards registered on the network. You can browse by tag or search for boards you're interested in. Curated boards are highlighted at the top.
+        ;h4: Dark mode
+        ;p: Click the "dark" / "light" toggle in the top-right corner of any page to switch between themes. Your preference is saved.
+        ;hr;
+        ;h3: Boards
+        ;h4: Following a board
+        ;p: When you visit a board in the directory and click into it, your computer subscribes to that board's host. The board will then appear in your feed. You can unfollow from the board page.
+        ;h4: Creating a board
+        ;p
+          ;+  ;/("Click ")
+          ;strong: new board
+          ;+  ;/(" in the top-right navigation to create a board. You'll choose a name (lowercase, no spaces — use hyphens), a display title, a description, and a default role for new visitors.")
+        ==
+        ;p: The default role determines what people can do when they first arrive:
+        ;ul
+          ;li
+            ;strong: reader
+            ;+  ;/(" — can view and vote, but not post")
+          ==
+          ;li
+            ;strong: poster
+            ;+  ;/(" — can view, vote, and submit posts (the most common default)")
+          ==
+          ;li
+            ;strong: mod
+            ;+  ;/(" — full moderator access (use sparingly)")
+          ==
+        ==
+        ;h4: Public boards
+        ;p: Boards can be set to public on the mod page. Public boards are viewable by anyone on the web — even people without Urbit. This is useful for making your community discoverable. Non-public boards require an Urbit computer and authentication to view.
+        ;hr;
+        ;h3: Posts and comments
+        ;h4: Submitting a post
+        ;p: From a board page, click "submit" to create a new post. Posts can be:
+        ;ul
+          ;li
+            ;strong: Link posts
+            ;+  ;/(" — a URL with an optional body. The title links to the URL.")
+          ==
+          ;li
+            ;strong: Text posts
+            ;+  ;/(" — a title and body with no external link. Good for discussions and questions.")
+          ==
+        ==
+        ;p: If you paste an image URL, a preview thumbnail will appear on the board.
+        ;h4: Commenting
+        ;p: Click into any post to see comments and add your own. Comments support threading — click "reply" on any comment to respond directly to it. Nested comments are indented to show the conversation tree.
+        ;h4: Voting
+        ;p: Use the up/down arrows to vote on posts and comments. Votes are tied to your Urbit identity, so each computer gets one vote per item. You can change or remove your vote at any time.
+        ;hr;
+        ;h3: Moderation
+        ;p: Board owners and moderators can manage their board from the mod page, accessible via the "mod" link on the board.
+        ;h4: Roles
+        ;p: Set roles for individual computers. Mods can delete posts and comments, pin posts, and manage the board. Posters can submit posts and comments. Readers can only view and vote.
+        ;h4: Pinned posts
+        ;p: Mods can pin posts so they always appear at the top of the board, regardless of sort order. Useful for rules, announcements, or FAQs.
+        ;h4: Sidebar
+        ;p: The mod page has a sidebar editor. The sidebar appears on the right side of the board and is a good place for rules, links, or a community description.
+        ;h4: Board settings
+        ;p: From the mod page you can update the board title, description, public visibility, and default role.
+        ;h4: Registry
+        ;p: Boards can be registered in the network directory so other users can discover them. From the mod page, register your board, add tags (up to 3), and it will appear in the directory for everyone.
+        ;hr;
+        ;h3: Sorting
+        ;p: Board posts can be sorted three ways using the toggle links at the top of the post list:
+        ;ul
+          ;li
+            ;strong: hot
+            ;+  ;/(" — a time-decay algorithm that rewards both recency and votes (the default)")
+          ==
+          ;li
+            ;strong: new
+            ;+  ;/(" — newest posts first, regardless of votes")
+          ==
+          ;li
+            ;strong: top
+            ;+  ;/(" — highest net votes first, all time")
+          ==
+        ==
+        ;hr;
+        ;h3: Paid boards
+        ;p: Board owners can charge for access using Cashu ecash tokens or Lightning payments.
+        ;h4: How it works
+        ;p: On the mod page, enable payments by setting a price (in satoshis) and an access duration (e.g. 30 days). When a visitor arrives at a paid board, they see a paywall with payment options.
+        ;h4: Paying with Lightning
+        ;p: If the board owner has configured a Cashu mint URL, visitors can pay with Lightning. Click "Pay with Lightning," and the board generates a Lightning invoice. Pay from any Lightning wallet (Phoenix, Zeus, Wallet of Satoshi, etc.) and access is granted automatically once the payment confirms.
+        ;h4: Paying with Cashu tokens
+        ;p: Visitors can also paste Cashu ecash tokens directly. Get tokens from any Cashu wallet, paste them into the payment form, and submit.
+        ;h4: Access duration
+        ;p: Paid access lasts for the duration set by the board owner. When your access expires, you'll see the paywall again and can pay to renew. If you pay before expiry, the new time is added to your remaining time.
+        ;h4: For board owners
+        ;p: The mod page shows your token wallet balance and a list of paid subscribers with their expiry dates. You can withdraw tokens to a Lightning wallet using the "melt to Lightning" feature — paste a Lightning invoice and the mint will pay it using your collected tokens.
+        ;hr;
+        ;h3: Tips
+        ;ul
+          ;li: You can install furum as a home-screen app on mobile (PWA). Use your browser's "Add to Home Screen" option.
+          ;li: furum supports image uploads if your computer has S3 storage configured (via the Storage app). Otherwise, paste image URLs directly.
+          ;li: Board names are permanent — pick a good one. Titles and descriptions can be changed later.
+          ;li: Your Urbit identity (@p) is your username everywhere. No separate accounts needed.
+          ;li: If a board host computer is offline, you can still browse your cached copy. Updates will sync when the host comes back.
+        ==
+      ==
+    ==
+    ~
+    %.n
+    dark
+  ==
+::
 ::  ABOUT PAGE (public)
 ::
 ++  render-about
@@ -2231,22 +2367,22 @@
         ==
         ;h4: Why is this different?
         ;ul
-          ;li: Self-hosted — every board lives on its owner's Urbit ship. Your content, your server, your rules.
+          ;li: Self-hosted — every board lives on its owner's Urbit computer. Your content, your server, your rules.
           ;li: Uncensorable — no central authority can take down a board or ban a user from the network.
-          ;li: Peer-to-peer — boards sync directly between ships. No cloud infrastructure required.
+          ;li: Peer-to-peer — boards sync directly between computers. No cloud infrastructure required.
           ;li: Open source — furum is free software anyone can modify and redistribute.
         ==
         ;hr;
         ;h3: Install furum
-        ;p: If you already have an Urbit ship running, you can install furum and start participating.
-        ;h4: From your ship's dojo
-        ;p: If you can reach this page, the host ship is distributing furum. Run this in your dojo:
+        ;p: If you already have an Urbit computer running, you can install furum and start participating.
+        ;h4: From your computer's dojo
+        ;p: If you can reach this page, the host computer is distributing furum. Run this in your dojo:
         ;pre: |install {host-p} %furum
-        ;p: That's it. Once installed, visit /apps/furum on your ship.
-        ;h4: Self-hosted ship (Port, native, or CLI)
+        ;p: That's it. Once installed, visit /apps/furum on your computer.
+        ;h4: Self-hosted computer (Port, native, or CLI)
         ;ol
           ;li
-            ;+  ;/("Make sure your ship is running and you can access the dojo (the command line in ")
+            ;+  ;/("Make sure your computer is running and you can access the dojo (the command line in ")
             ;a(href "https://port.urbit.org", target "_blank", rel "noopener noreferrer"): Port
             ;+  ;/(", or your terminal).")
           ==
@@ -2254,12 +2390,12 @@
             ;+  ;/("Run ")
             ;code: |install {host-p} %furum
           ==
-          ;li: Visit your ship's URL at /apps/furum
+          ;li: Visit your computer's URL at /apps/furum
         ==
-        ;h4: Tlon hosted ship (tlon.network)
+        ;h4: Tlon hosted computer (tlon.network)
         ;ol
           ;li
-            ;+  ;/("Log in to your ship at ")
+            ;+  ;/("Log in to your computer at ")
             ;a(href "https://tlon.network", target "_blank", rel "noopener noreferrer"): tlon.network
           ==
           ;li: Open the Landscape app browser and search for furum, or use the dojo

@@ -1350,6 +1350,9 @@
         (send-html eyre-id 403 (render-error:fl "registry admin is only available to the registry host and delegates" dark))
       =/  entries=(list directory-entry)  ~(val by registry)
       (send-html eyre-id 200 (render-registry-admin:fl entries registry-admins =(our.bowl registry-ship) dark))
+    ::  guide page
+        [%guide ~]
+      (send-html eyre-id 200 (render-guide:fl dark))
     ::  create board form
         [%create ~]
       (send-html eyre-id 200 (render-create:fl dark))
