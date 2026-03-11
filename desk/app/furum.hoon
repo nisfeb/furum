@@ -1764,7 +1764,6 @@
       =/  inputs  (~(got by p.jon) 'inputs')
       =/  swap-req=json  (build-swap-request:ca inputs (flop outputs))
       =/  swap-body=@t  (en:json:html swap-req)
-      ~&  >>>  [%swap-body swap-body]
       =/  swap-octs=octs  [(met 3 swap-body) swap-body]
       =/  mint-clean=tape  (clean-mint-url:ca mint)
       =/  swap-url=@t  (crip (weld mint-clean "/v1/swap"))

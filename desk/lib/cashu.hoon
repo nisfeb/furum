@@ -169,14 +169,6 @@
   =/  r-mod=@  (mod r secp-n)
   =?  r-mod  =(0 r-mod)  1
   =/  yy  (hash-to-curve secret)
-  =/  dbg=@t
-    %+  rap  3
-    :~  'blind-Y x='
-        (bytes-to-hex x.yy 32)
-        ' y='
-        (bytes-to-hex y.yy 32)
-    ==
-  ~>  %slog.[0 leaf+(trip dbg)]
   =/  r-g  (ec-mul secp-g r-mod)
   =/  b-prime  (ec-add yy r-g)
   [b-prime=b-prime blinding-factor=r-mod]
@@ -192,16 +184,6 @@
   ::  negate r*K: flip y coordinate (mod p)
   =/  neg-r-k  r-k(y (sub secp-p y.r-k))
   =/  result  (ec-add c-blind neg-r-k)
-  =/  dbg2=@t
-    %+  rap  3
-    :~  'unblind C_='
-        (bytes-to-hex x.c-blind 32)
-        ' rK='
-        (bytes-to-hex x.r-k 32)
-        ' C='
-        (bytes-to-hex x.result 32)
-    ==
-  ~>  %slog.[0 leaf+(trip dbg2)]
   result
 ::
 ::  -- NUT-03 swap request/response builders --
