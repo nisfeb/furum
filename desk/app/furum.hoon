@@ -1471,7 +1471,7 @@
               |=(pm=pending-melt =(name name.pm))
           ==
         =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
-        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml sav))
+        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml sav paid.u.brd now.bowl))
       ::  remote board - check my-roles
       =/  mr  (~(get by my-roles) [host name])
       ?.  ?~(mr %.n =(u.mr %mod))
@@ -1481,7 +1481,7 @@
         (send-html eyre-id 404 (render-error:fl "board not found in cache" dark))
       =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
       =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
-      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml sav))
+      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml sav *(map @p @da) now.bowl))
     ::  backup wallet proofs: /b/{host}/{name}/mod/backup-proofs
         [%b @ @ %mod %backup-proofs ~]
       =/  host=@p  (slav %p i.t.path)

@@ -139,7 +139,14 @@
   .paywall-status { font-size: 18px; font-weight: bold; color: #cc2020; }
   .paywall-info { background: #ffeeba; padding: 12px; border-radius: 6px; margin: 12px 0; font-size: 15px; }
   body.dark .paywall-info { background: #4a3c00; color: #ffeeba; }
-  .payment-form { margin-top: 16px; }
+  .tab-bar { display: flex; gap: 0; margin: 16px 0 0 0; border-bottom: 2px solid #ddd; }
+  .tab-btn { padding: 8px 20px; border: 2px solid #ddd; border-bottom: none; background: #f5f5f5; cursor: pointer; font-size: 14px; font-weight: bold; border-radius: 6px 6px 0 0; margin-bottom: -2px; color: #666; }
+  .tab-btn.active { background: #fff; border-bottom: 2px solid #fff; color: #333; }
+  body.dark .tab-bar { border-bottom-color: #444; }
+  body.dark .tab-btn { background: #2a2a2a; border-color: #444; color: #888; }
+  body.dark .tab-btn.active { background: #1a1a1a; border-bottom-color: #1a1a1a; color: #ddd; }
+  .pay-tab { padding: 16px 0; }
+  .payment-form { margin-top: 0; }
   .payment-form label { font-weight: bold; font-size: 14px; }
   .payment-form select, .payment-form input[type="text"], .payment-form textarea {
     width: 100%; max-width: 500px; padding: 6px; font-size: 14px; }
@@ -323,6 +330,25 @@
   ?:  &((gte c 'a') (lte c 'f'))  `(add 10 (sub c 'a'))
   ?:  &((gte c 'A') (lte c 'F'))  `(add 10 (sub c 'A'))
   ~
+::
+::  format number with commas: 10000 -> "10,000"
+::
+++  commafy
+  |=  n=@ud
+  ^-  tape
+  =/  raw=tape  (skip (a-co:co n) |=(c=@ =(c '.')))
+  =/  len=@ud  (lent raw)
+  ?:  (lte len 3)  raw
+  =/  idx=@ud  0
+  =/  out=tape  ~
+  |-
+  ?:  =(idx len)  out
+  =/  pos=@ud  (sub len (add idx 1))
+  =/  ch=@  (snag idx raw)
+  =/  need-comma=?  &((gth pos 0) =(0 (mod pos 3)))
+  ?:  need-comma
+    $(idx +(idx), out (weld out [ch ',' ~]))
+  $(idx +(idx), out (snoc out ch))
 ::
 ::  time ago display
 ::
@@ -748,10 +774,10 @@
         ;+  url-host
         ;+  img-prev
         ;div.me
-          ;+  ;/("{(a-co:co points)} pts by {(scow %p author.post.item)} {(time-ago now created.post.item)} to ")
+          ;+  ;/("{(commafy points)} pts by {(scow %p author.post.item)} {(time-ago now created.post.item)} to ")
           ;a(href board-path): {(trip board-name.item)}
           ;+  ;/(" | ")
-          ;a(href post-href): {(a-co:co comment-count.post.item)} comments
+          ;a(href post-href): {(commafy comment-count.post.item)} comments
         ==
       ==
     ==
@@ -936,7 +962,7 @@
           ;+  title-link
         ==
         ;div.me
-          ;a(href post-href): {(a-co:co comment-count.post)} comments
+          ;a(href post-href): {(commafy comment-count.post)} comments
           ;+  unpin-btn
         ==
       ==
@@ -1005,8 +1031,8 @@
         ;+  url-host
         ;+  img-prev
         ;div.me
-          ;+  ;/("{(a-co:co points)} points by {(scow %p author.post)} {(time-ago now created.post)} | ")
-          ;a(href post-href): {(a-co:co comment-count.post)} comments
+          ;+  ;/("{(commafy points)} points by {(scow %p author.post)} {(time-ago now created.post)} | ")
+          ;a(href post-href): {(commafy comment-count.post)} comments
           ;+  del-btn
           ;+  pin-btn
         ==
@@ -1120,7 +1146,7 @@
       ;+  url-link
       ;+  img-prev
       ;div.me
-        ;+  ;/("{(a-co:co points)} points by {(scow %p author.post)} {(time-ago now created.post)}")
+        ;+  ;/("{(commafy points)} points by {(scow %p author.post)} {(time-ago now created.post)}")
         ;+  edit-link
         ;+  del-btn
         ;+  pin-btn
@@ -1191,7 +1217,7 @@
     ;div(class ?:(is-new-comment "cm cm-new" "cm"))
       ;div.cm-meta
         ;+  vote-btn
-        ;+  ;/(" {(scow %p author.c)} {(a-co:co points)} points {(time-ago now created.c)}")
+        ;+  ;/(" {(scow %p author.c)} {(commafy points)} points {(time-ago now created.c)}")
         ;+  del-btn
       ==
       ;+  (linkify-div "" (trip body.c))
@@ -1434,19 +1460,12 @@
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
-  =/  price-text=tape  (skip (a-co:co price.pay) |=(c=@ =(c '.')))
+  =/  price-text=tape  (commafy price.pay)
   =/  days=@ud  (div interval.pay ~d1)
-  =/  days-text=tape  (skip (a-co:co days) |=(c=@ =(c '.')))
+  =/  days-text=tape  (commafy days)
   =/  paywall-refresh-js=tape  (trip 'setInterval(function(){location.reload()},3000)')
   =/  refresh-node=manx  [[%script ~] [[[%$ [%$ paywall-refresh-js] ~] ~] ~]]
-  =/  ln-section=manx
-    ?~  mint.pay  ;span;
-    :-  [%div ~[['style' "margin-top: 24px; padding-top: 16px; border-top: 1px solid #ccc; text-align: center"]]]
-    :~  ;p: — or —
-        ;form(method "post", action "{board-path}/pay-lightning")
-          ;input.btn(type "submit", value "pay with lightning");
-        ==
-    ==
+  =/  has-lightning=?  ?=(^ mint.pay)
   =/  pending-section=manx
     ?.  pending  ;span;
     :-  [%div ~[['class' "paywall-info"]]]
@@ -1695,6 +1714,63 @@
       ;p(id "qr-status"): Point camera at Cashu QR code...
       ;button(type "button", id "qr-close-btn"): Close
     ==
+  =/  tab-js=@t
+    '''
+    function showTab(id){
+      document.querySelectorAll('.pay-tab').forEach(function(el){el.style.display='none'});
+      document.querySelectorAll('.tab-btn').forEach(function(el){el.classList.remove('active')});
+      document.getElementById(id).style.display='block';
+      document.querySelector('[data-tab="'+id+'"]').classList.add('active');
+    }
+    '''
+  =/  tab-script=manx  [[%script ~] [[[%$ [%$ (trip tab-js)] ~] ~] ~]]
+  =/  ln-tab=manx
+    ?.  has-lightning  ;span;
+    ;div.pay-tab(id "tab-lightning")
+      ;form(method "post", action "{board-path}/pay-lightning")
+        ;p: Pay instantly from any Lightning wallet.
+        ;input.btn(type "submit", value "Generate Lightning Invoice");
+      ==
+    ==
+  =/  ecash-tab=manx
+    ;div.pay-tab(id "tab-ecash", style ?:(has-lightning "display:none" ""))
+      ;form.payment-form(method "post", action "{board-path}/pay")
+        ;input(type "hidden", name "tokens", id "tokens-hidden", value "");
+        ;input(type "hidden", name "mint", id "mint-hidden", value "");
+        ;div
+          ;label: Select Mint
+          ;br;
+          ;select(name "mint-select", id "mint-select")
+            ;*  mint-options
+            ;option(value "custom"): Custom mint URL...
+          ==
+        ==
+        ;br;
+        ;div
+          ;label: Custom Mint URL
+          ;br;
+          ;input(type "text", name "mint-custom", id "mint-custom", placeholder "https://mint.example.com");
+        ==
+        ;br;
+        ;div
+          ;label: Paste Cashu Token (cashuA.../cashuB... or raw JSON)
+          ;br;
+          ;textarea(id "token-input", rows "6", cols "60", placeholder "cashuAeyJ0b2tlbi...");
+        ==
+        ;p(id "token-summary");
+        ;button.btn(type "button", id "qr-scan-btn"): Scan QR Code
+        ;br;
+        ;br;
+        ;input.btn(type "submit", value "Submit Payment");
+      ==
+    ==
+  =/  tab-bar=manx
+    ?.  has-lightning
+      ;span;
+    ;div.tab-bar
+      ;button.tab-btn.active(type "button", data-tab "tab-lightning", onclick "showTab('tab-lightning')"): Lightning
+      ;button.tab-btn(type "button", data-tab "tab-ecash", onclick "showTab('tab-ecash')"): Cashu Token
+    ==
   =/  paywall-content=marl
     :~  ;h3: {(trip title.board-info)}
         ;p.me: {(trip description.board-info)}
@@ -1704,36 +1780,10 @@
         ;div.paywall-info
           ;p: Price: {price-text} sats for {days-text} days of access
         ==
-        ;form.payment-form(method "post", action "{board-path}/pay")
-          ;input(type "hidden", name "tokens", id "tokens-hidden", value "");
-          ;input(type "hidden", name "mint", id "mint-hidden", value "");
-          ;div
-            ;label: Select Mint
-            ;br;
-            ;select(name "mint-select", id "mint-select")
-              ;*  mint-options
-              ;option(value "custom"): Custom mint URL...
-            ==
-          ==
-          ;br;
-          ;div
-            ;label: Custom Mint URL
-            ;br;
-            ;input(type "text", name "mint-custom", id "mint-custom", placeholder "https://mint.example.com");
-          ==
-          ;br;
-          ;div
-            ;label: Paste Cashu Token (cashuA.../cashuB... or raw JSON)
-            ;br;
-            ;textarea(id "token-input", rows "6", cols "60", placeholder "cashuAeyJ0b2tlbi...");
-          ==
-          ;p(id "token-summary");
-          ;button.btn(type "button", id "qr-scan-btn"): Scan QR Code
-          ;br;
-          ;br;
-          ;input.btn(type "submit", value "submit payment");
-        ==
-        ln-section
+        tab-bar
+        ln-tab
+        ecash-tab
+        tab-script
         ;script: {(trip token-js)}
         qr-overlay
         qr-scan-script
@@ -1746,9 +1796,9 @@
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
-  =/  price-text=tape  (skip (a-co:co price.pay) |=(c=@ =(c '.')))
+  =/  price-text=tape  (commafy price.pay)
   =/  days=@ud  (div interval.pay ~d1)
-  =/  days-text=tape  (skip (a-co:co days) |=(c=@ =(c '.')))
+  =/  days-text=tape  (commafy days)
   =/  refresh-js=tape  (trip 'setInterval(function(){location.reload()},4000)')
   =/  refresh-node=manx  [[%script ~] [[[%$ [%$ refresh-js] ~] ~] ~]]
   =/  copy-js=tape  "navigator.clipboard.writeText(document.getElementById('bolt11-text').value)"
@@ -1786,7 +1836,7 @@
   [(crip "furum - {(trip name.board-info)} - lightning payment") content `[board-path (trip title.board-info)] %.n dark]
 ::
 ++  render-mod
-  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved-payment=?]
+  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved-payment=? paid=(map @p @da) now=@da]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -1942,7 +1992,7 @@
       ^-  manx
       ;div.wallet-entry
         ;p: Mint: {(trip mint)}
-        ;p: Balance: {(skip (a-co:co total) |=(c=@ =(c '.')))} sats ({(skip (a-co:co count) |=(c=@ =(c '.')))} proofs)
+        ;p: Balance: {(commafy total)} sats ({(commafy count)} proofs)
         ;form(method "post", action "{board-path}/mod/melt")
           ;input(type "hidden", name "mint", value (trip mint));
           ;div
@@ -1966,12 +2016,39 @@
         ;input.btn(type "submit", value "delete board", style "background: #c00; color: #fff");
       ==
     ==
+  =/  paid-list=(list [@p @da])
+    %+  sort  ~(tap by paid)
+    |=  [[a=@p da=@da] [b=@p db=@da]]
+    (gth da db)
+  =/  paid-section=manx
+    ?.  is-host  ;span;
+    ?~  payment  ;span;
+    ?:  =(0 ~(wyt by paid))  ;span;
+    ;div
+      ;hr;
+      ;h4: Paid Subscribers
+      ;table(style "width: 100%; border-collapse: collapse")
+        ;tr(style "text-align: left")
+          ;th: Ship
+          ;th: Paid Until
+          ;th: Status
+        ==
+        ;*  %+  turn  paid-list
+            |=  [who=@p until=@da]
+            ;tr(style "border-top: 1px solid #ddd; padding: 4px 0")
+              ;td: {(scow %p who)}
+              ;td: {(scow %da until)}
+              ;td: {?:((gth until now) "active" "expired")}
+            ==
+      ==
+    ==
   =/  mod-content=marl
     :~  ;h3: Moderate {(trip title.board-info)}
         ;p.me: Default role: {(trip (role-to-text default-role.board-info))}
         pub-section
         payment-section
         wallet-section
+        paid-section
         sidebar-section
         ;h4: Set User Role
         role-form
