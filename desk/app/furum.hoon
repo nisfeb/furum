@@ -452,7 +452,16 @@
     ::
         %delete-board
       ?>  =(src.bowl our.bowl)
-      `this(boards (~(del by boards) name.act))
+      ::  kick all subscribers on this board
+      =/  kick-cards=(list card)
+        :~  [%give %kick ~[/board/[name.act]] ~]
+        ==
+      ::  unregister from registry
+      =/  unreg-cards=(list card)
+        :~  [%pass /mod-action %agent [registry-ship %furum] %poke %furum-registry-action !>(`registry-action`[%unregister name.act])]
+        ==
+      :_  this(boards (~(del by boards) name.act))
+      (weld kick-cards unreg-cards)
     ::
         %set-public
       ?>  =(src.bowl our.bowl)
@@ -1542,6 +1551,16 @@
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
       [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
+    ::  delete board: POST /b/{host}/{name}/mod/delete
+        [%b @ @ %mod %delete ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      ?.  =(host our.bowl)
+        (send-html eyre-id 403 (render-error:fl "can only delete local boards" dark))
+      =/  =action  [%delete-board name]
+      =^  cards  this  (handle-action action)
+      =^  redir  this  (redirect eyre-id "/apps/furum")
+      [(weld cards redir) this]
     ==
   ::
   ++  send-html

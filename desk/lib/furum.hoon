@@ -1700,6 +1700,16 @@
       ==
       ;hr;
     ==
+  =/  delete-section=manx
+    ?.  is-host  ;span;
+    ;div
+      ;hr;
+      ;h4: Delete Board
+      ;p.me: Permanently delete this board and unregister it. This cannot be undone.
+      ;form(method "post", action "{board-path}/mod/delete", onsubmit "return confirm('Are you sure you want to delete this board? This cannot be undone.')")
+        ;input.btn(type "submit", value "delete board", style "background: #c00; color: #fff");
+      ==
+    ==
   =/  mod-content=marl
     :~  ;h3: Moderate {(trip title.board-info)}
         ;p.me: Default role: {(trip (role-to-text default-role.board-info))}
@@ -1712,6 +1722,7 @@
         ;hr;
         ;h4: Current Roles
         role-section
+        delete-section
     ==
   %-  page-shell
   [(crip "furum - mod {(trip name.board-info)}") mod-content `[board-path (trip title.board-info)] %.n dark]
