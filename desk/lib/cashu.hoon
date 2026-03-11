@@ -111,7 +111,7 @@
   ?>  (lth counter 65.536)
   ::  SHA-256(msg_hash || counter_le32)
   ::  counter as 4-byte LE is just the atom value; shay reads 36 bytes
-  =/  hash=@  (shay 36 (cat 3 msg-hash counter))
+  =/  hash=@  (rev 3 32 (shay 36 (cat 3 msg-hash counter)))
   ::  try to decompress as 02 || hash (even-y point)
   =/  compressed=@  (add (lsh [3 32] 2) hash)
   =/  result  (mule |.((ec-decompress compressed)))
