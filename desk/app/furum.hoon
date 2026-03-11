@@ -787,7 +787,6 @@
     ::
         %request-lightning-invoice
       ::  remote user requests a Lightning invoice to pay for board access
-      ~&  >>>  [%ln-request-received name.act src.bowl nonce.act]
       =/  brd  (~(get by boards) name.act)
       ?~  brd
         ~&  >>>  [%ln-invoice-no-board name.act src.bowl]
@@ -826,12 +825,10 @@
       ?:  =('' keyset-id)
         ::  need to fetch keyset first
         =/  keys-url=@t  (crip (weld mint-clean "/v1/keysets"))
-        ~&  >>>  [%ln-fetching-keysets keys-url]
         :_  this
         :~  [%pass /iris/mint-keys/[nonce] %arvo %i %request [%'GET' keys-url ~ ~] *outbound-config:iris]
         ==
       ::  have keyset — request mint quote
-      ~&  >>>  [%ln-requesting-quote keyset-id mint-cord]
       =/  quote-body=@t  (en:json:html (build-mint-quote-request:ca price.u.pay 'sat'))
       =/  quote-octs=octs  [(met 3 quote-body) quote-body]
       =/  quote-url=@t  (crip (weld mint-clean "/v1/mint/quote/bolt11"))
@@ -1432,8 +1429,8 @@
               [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
               [%give %kick ~[/http-response/[eyre-id]] ~]
           ==
+        ::  always re-subscribe when showing paywall to refresh cached payment config
         =/  resub-cards=(list card)
-          ?.  pnd  ~
           :~  [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
               [%pass /board/(scot %p host)/[name] %agent [host %furum] %watch /board/[name]]
           ==
@@ -2649,7 +2646,6 @@
   ::  -- NUT-04 mint (Lightning invoice) handlers --
   ::
       [%iris %mint-keys @ ~]
-    ~&  >>>  [%ln-on-arvo-mint-keys wire]
     =/  nonce=@t  i.t.t.wire
     =/  pending  (~(get by pending-mints) nonce)
     ?~  pending
@@ -2783,7 +2779,6 @@
     ==
   ::
       [%iris %mint-quote @ ~]
-    ~&  >>>  [%ln-on-arvo-mint-quote wire]
     =/  nonce=@t  i.t.t.wire
     =/  pending  (~(get by pending-mints) nonce)
     ?~  pending
@@ -2965,7 +2960,6 @@
         blinding-factors.u.pending
         mint-keys
       ==
-    ~&  >>>  [%ln-mint-proofs (turn new-proofs |=(p=cashu-proof [amount.p id.p secret.p c.p]))]
     ::  add proofs to wallet
     =/  existing-proofs=(list cashu-proof)  (~(gut by wallet.u.brd) mint.u.pending ~)
     =/  updated-wallet  (~(put by wallet.u.brd) mint.u.pending (weld existing-proofs new-proofs))
