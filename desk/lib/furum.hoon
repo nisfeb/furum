@@ -1545,7 +1545,7 @@
   [(crip "furum - {(trip name.board-info)} - payment required") paywall-content `[board-path (trip title.board-info)] %.n dark]
 ::
 ++  render-mod
-  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof))]
+  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=?]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -1661,16 +1661,24 @@
     |=  [mint=@t proofs=(list cashu-proof)]
     =/  total=@ud  (roll proofs |=([p=cashu-proof acc=@ud] (add acc amount.p)))
     [mint total (lent proofs)]
+  =/  melt-pending-banner=manx
+    ?.  pending-melt  ;span;
+    :-  [%div ~[['class' "paywall-info"]]]
+    :~  ;p: Processing withdrawal... This page will refresh automatically.
+        [[%script ~] [[[%$ [%$ (trip 'setTimeout(function(){location.reload()},3000)')] ~] ~] ~]]
+    ==
   =/  wallet-section=manx
     ?.  is-host  ;span;
     ?:  =(0 (lent wallet-entries))
       ;div
         ;h4: Wallet
+        ;+  melt-pending-banner
         ;p.me: No ecash tokens stored. Tokens will appear here when users pay for board access.
         ;hr;
       ==
     ;div
       ;h4: Wallet
+      ;+  melt-pending-banner
       ;p.me: Ecash tokens received from board payments. Withdraw to Lightning below.
       ;*
       %+  turn  wallet-entries

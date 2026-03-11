@@ -396,7 +396,9 @@
       [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob payment.ob paid.ob *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
     `this(state [%9 registry.old new-boards cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt)])
   ::
-    %9  `this(state old)
+    %9
+    ::  clear stale pending ops — iris requests don't survive restart
+    `this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt)))
   ==
 ::
 ++  on-poke
@@ -1179,7 +1181,8 @@
           (send-html eyre-id 404 (render-error:fl "board not found" dark))
         ?.  (is-mod our.bowl u.brd)
           (send-html eyre-id 403 (render-error:fl "not a moderator" dark))
-        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd))
+        =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
+        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml))
       ::  remote board - check my-roles
       =/  mr  (~(get by my-roles) [host name])
       ?.  ?~(mr %.n =(u.mr %mod))
@@ -1187,7 +1190,8 @@
       =/  cb  (~(get by cache) [host name])
       ?~  cb
         (send-html eyre-id 404 (render-error:fl "board not found in cache" dark))
-      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof))))
+      =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
+      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml))
     ::  edit post form: /b/{host}/{name}/{post-id}/edit
         [%b @ @ @ %edit ~]
       =/  host=@p  (slav %p i.t.path)
@@ -1457,7 +1461,7 @@
       =/  invoice=@t  (~(gut by form) 'invoice' '')
       =/  =action  [%melt-to-lightning name mint invoice]
       =^  cards  this  (handle-action action)
-      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod")
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod?pending=melt")
       [(weld cards redir) this]
     ::  follow board: POST /b/{host}/{name}/follow
         [%b @ @ %follow ~]
