@@ -173,6 +173,53 @@
   }
   '''
 ::
+::  inline JS for web push notification subscription management
+::
+++  push-js
+  ^-  @t
+  '''
+  (function(){
+    var btn=document.getElementById("push-toggle");
+    if(!btn||!("PushManager" in window)||!("serviceWorker" in navigator))return;
+    btn.style.display="inline";
+    navigator.serviceWorker.ready.then(function(reg){
+      reg.pushManager.getSubscription().then(function(sub){
+        btn.textContent=sub?"unmute":"notify";
+        btn.onclick=function(){
+          if(sub){
+            var id=sub.endpoint.split("/").pop();
+            fetch("/apps/furum/~web-pusher/unsubscribe",{
+              method:"POST",credentials:"include",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({id:"b-"+id})
+            }).then(function(){return sub.unsubscribe()}).then(function(){
+              sub=null;btn.textContent="notify"
+            });
+          } else {
+            fetch("/apps/furum/~web-pusher/vapid-key",{credentials:"include"})
+            .then(function(r){return r.text()})
+            .then(function(key){
+              var raw=atob(key.replace(/-/g,"+").replace(/_/g,"/"));
+              var arr=new Uint8Array(raw.length);
+              for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+              return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:arr})
+            }).then(function(s){
+              sub=s;
+              var k=sub.toJSON();
+              var id="b-"+k.endpoint.split("/").pop();
+              return fetch("/apps/furum/~web-pusher/subscribe",{
+                method:"POST",credentials:"include",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({id:id,endpoint:k.endpoint,p256dh:k.keys.p256dh,auth:k.keys.auth})
+              })
+            }).then(function(){btn.textContent="unmute"});
+          }
+        };
+      });
+    });
+  })();
+  '''
+::
 ::  inline JS for S3 image upload (works on submit form and comment forms)
 ::
 ++  upload-js
@@ -645,7 +692,11 @@
   ^-  manx
   =/  style-node=manx
     [[%style ~] [[[%$ [%$ (trip furum-css)]~] ~] ~]]
-  =/  sw-script=tape  (trip 'if("serviceWorker" in navigator)navigator.serviceWorker.register("/apps/furum/sw",{scope:"/apps/furum"})')
+  =/  sw-script=tape
+    ;:  weld
+      (trip 'if("serviceWorker" in navigator)navigator.serviceWorker.register("/apps/furum/sw",{scope:"/apps/furum"});')
+      (trip push-js)
+    ==
   =/  sw-node=manx
     [[%script ~] [[[%$ [%$ sw-script] ~] ~] ~]]
   =/  body-attrs=mart
@@ -664,6 +715,7 @@
       ==
     ;span.dark-toggle
       ;a(href "/apps/furum/guide", style "margin-right: 12px"): guide
+      ;button#push-toggle(type "button", style "display:none; margin-right: 8px"): notify
       ;form(method "post", action "/apps/furum/dark-mode", style "display:inline")
         ;button(type "submit"): {toggle-label}
       ==

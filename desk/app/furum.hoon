@@ -6,7 +6,8 @@
 ::  - client: subscribes to registry and hosts, caches data, serves UI
 ::
 /-  *furum
-/+  default-agent, dbug, fl=furum, ca=cashu
+/-  push
+/+  default-agent, dbug, fl=furum, ca=cashu, web-pusher
 |%
 +$  old-board-info
   $:  name=board-name
@@ -399,6 +400,12 @@
 --
 ::
 %-  agent:dbug
+%-  %:  agent:web-pusher
+      /apps/furum
+      'mailto:furum@urbit.org'
+      %.y
+      0
+    ==
 =|  state-12
 =*  state  -
 ^-  agent:gall
@@ -927,9 +934,22 @@
           next-comment-ids  (~(put by next-comment-ids.brd) post.act +(next-cid))
           posts  (~(put by posts.brd) post.act pst(comment-count +(comment-count.pst)))
         ==
+      =/  push-cards=(list card)
+        ::  notify post author when someone else comments on their post
+        ::
+        ?:  =(src.bowl author.pst)  ~
+        =/  post-url=@t
+          (crip "/apps/furum/b/{(scow %p our.bowl)}/{(trip name.act)}/{(a-co:co post.act)}")
+        =/  =push-send:push
+          :*  targets=(sy author.pst ~)
+              tags=~
+              exclude=~
+              msg=[title='New comment on your post' body=(crip "{(scow %p src.bowl)} commented on '{(trip title.pst)}'") icon=~ url=`post-url tag=~]
+          ==
+        :~  [%pass /push/comment %agent [our dap]:bowl %poke %push-send !>(push-send)]
+        ==
       :_  this(boards (~(put by boards) name.act new-brd))
-      :~  (give-board-update name.act [%new-comment post.act comment])
-      ==
+      (weld ~[(give-board-update name.act [%new-comment post.act comment])] push-cards)
     ::
         %delete-comment
       =/  brd  (~(got by boards) name.act)
@@ -1182,9 +1202,36 @@
           [%give %fact ~[/http-response/[eyre-id]] %http-response-data !>(`data)]
           [%give %kick ~[/http-response/[eyre-id]] ~]
       ==
-    ::  service worker (required for PWA standalone mode)
+    ::  service worker (PWA + push notifications)
         [%sw ~]
-      =/  sw=@t  'self.addEventListener("fetch",function(e){});'
+      =/  sw=@t
+        '''
+        self.addEventListener("install",function(e){self.skipWaiting()});
+        self.addEventListener("activate",function(e){e.waitUntil(self.clients.claim())});
+        self.addEventListener("push",function(e){
+          var d={title:"Notification",body:""};
+          try{d=e.data.json()}catch(x){}
+          var t=d.tag||"";
+          e.waitUntil(
+            (t?self.registration.getNotifications({tag:t}):Promise.resolve([]))
+            .then(function(all){
+              var c=1;
+              if(all.length>0&&all[0].data&&all[0].data.count)c=all[0].data.count+1;
+              var body=d.body||"";
+              if(c>1)body=c+" new";
+              return self.registration.showNotification(d.title,{
+                body:body,icon:d.icon||"",tag:t,renotify:true,
+                data:{url:d.url||"",count:c}
+              })
+            })
+          )
+        });
+        self.addEventListener("notificationclick",function(e){
+          e.notification.close();
+          if(e.notification.data&&e.notification.data.url)
+            e.waitUntil(clients.openWindow(e.notification.data.url))
+        });
+        '''
       =/  =response-header:http  [200 ~[['content-type' 'application/javascript'] ['service-worker-allowed' '/apps/furum']]]
       =/  data=octs  [(met 3 sw) sw]
       :_  this
