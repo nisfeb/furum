@@ -149,6 +149,8 @@
       [%upvote name=board-name target=vote-target]
       [%downvote name=board-name target=vote-target]
       [%remove-vote name=board-name target=vote-target]
+      ::  notifications from remote hosts
+      [%notify title=@t body=@t url=(unit @t) tags=(set term)]
       ::  backup and restore
       [%backup-to-clay ~]
       [%restore-from-clay ~]

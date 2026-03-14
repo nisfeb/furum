@@ -1026,13 +1026,17 @@
         ::
         =/  comment-cards=(list card)
           ?:  =(src.bowl author.pst)  ~
-          =/  =push-send:push
-            :*  targets=(sy author.pst ~)
-                tags=(sy %comments ~)
-                exclude=~
-                msg=[title='New comment on your post' body=(crip "{(scow %p src.bowl)} commented on '{(trip title.pst)}'") icon=~ url=`post-url tag=~]
+          =/  ntitle=@t  'New comment on your post'
+          =/  nbody=@t  (crip "{(scow %p src.bowl)} commented on '{(trip title.pst)}'")
+          ?:  =(author.pst our.bowl)
+            ::  local: send push directly
+            =/  =push-send:push
+              [targets=(sy our.bowl ~) tags=(sy %comments ~) exclude=~ msg=[ntitle nbody ~ `post-url ~]]
+            :~  [%pass /push/comment %agent [our dap]:bowl %poke %push-send !>(push-send)]
             ==
-          :~  [%pass /push/comment %agent [our dap]:bowl %poke %push-send !>(push-send)]
+          ::  remote: poke author's ship
+          =/  notify-act=action  [%notify ntitle nbody `post-url (sy %comments ~)]
+          :~  [%pass /notify/comment %agent [author.pst %furum] %poke %furum-action !>(notify-act)]
           ==
         ::  notify parent comment author on reply
         ::
@@ -1042,13 +1046,15 @@
           ?~  parent-comment  ~
           ?:  =(src.bowl author.u.parent-comment)  ~
           ?:  =(author.u.parent-comment author.pst)  ~  :: already notified above
-          =/  =push-send:push
-            :*  targets=(sy author.u.parent-comment ~)
-                tags=(sy %comments ~)
-                exclude=~
-                msg=[title='Reply to your comment' body=(crip "{(scow %p src.bowl)} replied to your comment on '{(trip title.pst)}'") icon=~ url=`post-url tag=~]
+          =/  ntitle=@t  'Reply to your comment'
+          =/  nbody=@t  (crip "{(scow %p src.bowl)} replied to your comment on '{(trip title.pst)}'")
+          ?:  =(author.u.parent-comment our.bowl)
+            =/  =push-send:push
+              [targets=(sy our.bowl ~) tags=(sy %comments ~) exclude=~ msg=[ntitle nbody ~ `post-url ~]]
+            :~  [%pass /push/reply %agent [our dap]:bowl %poke %push-send !>(push-send)]
             ==
-          :~  [%pass /push/reply %agent [our dap]:bowl %poke %push-send !>(push-send)]
+          =/  notify-act=action  [%notify ntitle nbody `post-url (sy %comments ~)]
+          :~  [%pass /notify/reply %agent [author.u.parent-comment %furum] %poke %furum-action !>(notify-act)]
           ==
         (weld comment-cards reply-cards)
       :_  this(boards (~(put by boards) name.act new-brd))
@@ -1109,6 +1115,18 @@
       ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %remove)
+    ::
+        %notify
+      ::  receive notification from a remote host — send push locally
+      =/  =push-send:push
+        :*  targets=(sy our.bowl ~)
+            tags=tags.act
+            exclude=~
+            msg=[title=title.act body=body.act icon=~ url=url.act tag=~]
+        ==
+      :_  this
+      :~  [%pass /push/remote-notify %agent [our dap]:bowl %poke %push-send !>(push-send)]
+      ==
     ::
         %backup-to-clay
       ?>  =(src.bowl our.bowl)
@@ -2348,10 +2366,11 @@
   ^-  (quip card _this)
   |^
   ?+    wire  (on-agent:def wire sign)
-    ::  poke acks (register, mod actions)
+    ::  poke acks (register, mod actions, notifications)
     ::
       [%register ~]  `this
       [%mod-action ~]  `this
+      [%notify *]  `this
     ::  responses from registry subscription
     ::
       [%registry ~]
