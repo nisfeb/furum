@@ -126,6 +126,7 @@
       [%new-comment name=board-name post=post-id parent=(unit comment-id) body=@t]
       [%delete-comment name=board-name post=post-id id=comment-id]
       ::  board settings
+      [%edit-board-info name=board-name title=@t description=@t]
       [%set-public name=board-name public=?]
       ::  pinning
       [%pin-post name=board-name id=post-id pinned=?]
@@ -151,6 +152,7 @@
       [%remove-vote name=board-name target=vote-target]
       ::  notifications from remote hosts
       [%notify title=@t body=@t url=(unit @t) tags=(set term)]
+      [%mark-notifications-read ~]
       ::  backup and restore
       [%backup-to-clay ~]
       [%restore-from-clay ~]
@@ -167,6 +169,16 @@
       [%add-registry-admin who=@p]
       [%remove-registry-admin who=@p]
       [%refresh-registry ~]
+  ==
+::
+::  notification record
+::
++$  notification
+  $:  title=@t
+      body=@t
+      url=(unit @t)
+      time=@da
+      read=?
   ==
 ::
 ::  backup types

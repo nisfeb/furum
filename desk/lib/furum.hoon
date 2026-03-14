@@ -93,7 +93,8 @@
   body.dark .va:hover { color: #cc2020; }
   body.dark .rk { color: #4a4a5a; }
   body.dark textarea, body.dark input[type=text], body.dark input[type=url],
-  body.dark select { background: #141428; color: #b8b8c8; border: 1px solid #2a2a40; }
+  body.dark input[type=number], body.dark select { background: #141428; color: #b8b8c8; border: 1px solid #2a2a40; }
+  body.dark input[type=checkbox] { accent-color: #cc2020; }
   body.dark .btn { background: #cc2020; color: #fff; border: none; }
   body.dark .btn:hover { background: #a01818; }
   body.dark table.mod td, body.dark table.mod th { border-bottom-color: #1e2838; }
@@ -735,10 +736,10 @@
   =/  sw-script=tape  (trip 'if("serviceWorker" in navigator)navigator.serviceWorker.register("/apps/furum/sw",{scope:"/apps/furum"});')
   =/  sw-node=manx
     [[%script ~] [[[%$ [%$ sw-script] ~] ~] ~]]
-  =/  push-script=manx
-    [[%script ~] [[[%$ [%$ (trip push-js)] ~] ~] ~]]
-  =/  push-node=manx
-    ?.  public  push-script
+  =/  notif-count-js=tape
+    (trip 'fetch("/apps/furum/notif-count",{credentials:"include"}).then(function(r){return r.json()}).then(function(d){var el=document.getElementById("notif-link");if(el&&d.count>0)el.textContent=d.count+" new"}).catch(function(){})')
+  =/  notif-count-node=manx
+    ?.  public  [[%script ~] [[[%$ [%$ notif-count-js] ~] ~] ~]]
     ;span;
   =/  body-attrs=mart
     ?:(dark ~[['class' "dark"]] ~)
@@ -755,9 +756,9 @@
         ;a(href "https://urbit.org/overview/running-urbit", style "color: #ffdede; text-decoration: none", target "_blank", rel "noopener noreferrer"): Get on Urbit
       ==
     ;span.dark-toggle
+      ;a#notif-link(href "/apps/furum/notifications", style "margin-right: 12px"): notifications
       ;a(href "/apps/furum/admin", style "margin-right: 12px"): admin
       ;a(href "/apps/furum/guide", style "margin-right: 12px"): guide
-      ;button#push-toggle(type "button", style "display:none; margin-right: 8px"): notifications
       ;form(method "post", action "/apps/furum/dark-mode", style "display:inline")
         ;button(type "submit"): {toggle-label}
       ==
@@ -779,7 +780,7 @@
     ;div.ct
       ;*  content
     ==
-  =/  body-children=marl  ~[hd-node ct-node push-node]
+  =/  body-children=marl  ~[hd-node ct-node notif-count-node]
   =/  body-node=manx  [[%body body-attrs] body-children]
   ;html
     ;head
@@ -1964,6 +1965,27 @@
         ==
       ==
     ==
+  =/  info-section=manx
+    ?.  is-host  ;span;
+    ;div
+      ;h4: Board Info
+      ;form(method "post", action "{board-path}/mod/edit-info")
+        ;div
+          ;label: Title
+          ;br;
+          ;input(type "text", name "title", value (trip title.board-info), required "", style "width: 100%; max-width: 440px; font-size: 16px; padding: 5px");
+        ==
+        ;br;
+        ;div
+          ;label: Description
+          ;br;
+          ;textarea(name "description", rows "3", cols "60"): {(trip description.board-info)}
+        ==
+        ;br;
+        ;input.btn(type "submit", value "Save Info");
+      ==
+      ;hr;
+    ==
   =/  pub-status=tape  ?:(public.board-info "This board is currently public." "This board is currently private.")
   =/  pub-label=tape  ?:(public.board-info "make private" "make public")
   =/  pub-section=manx
@@ -2103,6 +2125,16 @@
       ==
       ;hr;
     ==
+  =/  register-section=manx
+    ?.  is-host  ;span;
+    ;div
+      ;hr;
+      ;h4: Directory Registration
+      ;p.me: Register or re-register this board in the network directory so others can discover it.
+      ;form(method "post", action "{board-path}/mod/register")
+        ;input.btn(type "submit", value "Register in Directory");
+      ==
+    ==
   =/  delete-section=manx
     ?.  is-host  ;span;
     ;div
@@ -2142,6 +2174,7 @@
   =/  mod-content=marl
     :~  ;h3: Moderate {(trip title.board-info)}
         ;p.me: Default role: {(trip (role-to-text default-role.board-info))}
+        info-section
         pub-section
         payment-section
         wallet-section
@@ -2152,10 +2185,57 @@
         ;hr;
         ;h4: Current Roles
         role-section
+        register-section
         delete-section
     ==
   %-  page-shell
   [(crip "furum - mod {(trip name.board-info)}") mod-content `[board-path (trip title.board-info)] %.n dark]
+::
+::  NOTIFICATIONS PAGE
+::
+++  render-notifications
+  |=  [notifs=(list notification) now=@da dark=?]
+  ^-  manx
+  =/  unread=@ud
+    %+  roll  notifs
+    |=  [n=notification acc=@ud]
+    ?:(read.n acc +(acc))
+  =/  mark-btn=manx
+    ?.  (gth unread 0)  ;span;
+    ;form(method "post", action "/apps/furum/notifications/read")
+      ;input.btn(type "submit", value "Mark all read");
+    ==
+  =/  notif-rows=marl
+    ?~  notifs
+      :~  ;p.me: No notifications yet. You'll see them here when someone comments on your posts or replies to your comments.
+      ==
+    %+  turn  notifs
+    |=  n=notification
+    ^-  manx
+    =/  time-text=tape  (time-ago now time.n)
+    =/  read-style=tape  ?:(read.n "color: #8a8a9a" "")
+    ?~  url.n
+      ;div(style "padding: 8px 0; border-bottom: 1px solid #d0ccc4; {read-style}")
+        ;strong: {(trip title.n)}
+        ;p.me: {(trip body.n)}
+        ;span.me: {time-text}
+      ==
+    ;div(style "padding: 8px 0; border-bottom: 1px solid #d0ccc4; {read-style}")
+      ;strong
+        ;a(href (trip u.url.n)): {(trip title.n)}
+      ==
+      ;p.me: {(trip body.n)}
+      ;span.me: {time-text}
+    ==
+  =/  notif-content=marl
+    %+  welp
+    :~  ;h3: Notifications
+        ;p.me: {?:((gth unread 0) "{(a-co:co unread)} unread" "All caught up.")}
+        mark-btn
+    ==
+    notif-rows
+  %-  page-shell
+  :*  'furum - notifications'  notif-content  ~  %.n  dark  ==
 ::
 ::  ADMIN PAGE
 ::
@@ -2402,12 +2482,18 @@
       });
     })();
     '''
-  =/  notif-script=manx  [[%script ~] [[[%$ [%$ (trip notif-js)] ~] ~] ~]]
+  =/  notif-script=manx  [[%script ~] [[[%$ [%$ (weld (trip push-js) (trip notif-js))] ~] ~] ~]]
   =/  notif-section=marl
     :~
       ;hr;
       ;h3: Notification Preferences
-      ;p.me: Choose which events trigger push notifications. You must enable notifications (click the button in the header) for these to work.
+      ;h4: Push Notifications
+      ;p.me: Enable browser push notifications to get alerts even when furum isn't open.
+      ;button#push-toggle.btn(type "button", style "display:none"): Enable Push Notifications
+      ;br;
+      ;br;
+      ;h4: Notification Types
+      ;p.me: Choose which events you want to be notified about.
       ;div(style "margin: 12px 0")
         ;div(style "padding: 4px 0")
           ;label
