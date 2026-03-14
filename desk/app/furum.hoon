@@ -1963,6 +1963,29 @@
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
+      ::  optimistically update local cache for remote comment
+      =/  key  [host name]
+      =/  cb  (~(get by cache) key)
+      =?  this  ?=(^ cb)
+        =/  pc  (~(gut by comments.u.cb) pid *(map comment-id comment))
+        =/  next-cid=@ud
+          =/  cids=(list comment-id)  ~(tap in ~(key by pc))
+          ?~  cids  0
+          .+((roll `(list @ud)`cids max))
+        =/  =comment
+          :*  id=next-cid
+              parent=parent
+              author=our.bowl
+              body=body-val
+              created=now.bowl
+              up-votes=*(set @p)
+              down-votes=*(set @p)
+          ==
+        =/  pst  (~(get by posts.u.cb) pid)
+        =/  new-cb  u.cb(comments (~(put by comments.u.cb) pid (~(put by pc) id.comment comment)))
+        =?  new-cb  ?=(^ pst)
+          new-cb(posts (~(put by posts.new-cb) pid u.pst(comment-count +(comment-count.u.pst))))
+        this(cache (~(put by cache) key new-cb))
       [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
     ::  delete post: POST /b/{host}/{name}/{post-id}/delete
         [%b @ @ @ %delete ~]
@@ -1974,6 +1997,12 @@
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
+      ::  optimistically update local cache for remote delete
+      =/  key  [host name]
+      =/  cb  (~(get by cache) key)
+      =?  this  ?=(^ cb)
+        =/  new-cb  u.cb(posts (~(del by posts.u.cb) pid), comments (~(del by comments.u.cb) pid))
+        this(cache (~(put by cache) key new-cb))
       [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
     ::  delete comment: POST /b/{host}/{name}/{post-id}/delete-comment
         [%b @ @ @ %delete-comment ~]
@@ -1987,6 +2016,17 @@
       ?:  =(host our.bowl)
         =^  cards  this  (handle-action action)
         [(weld cards redir) this]
+      ::  optimistically update local cache for remote delete-comment
+      =/  key  [host name]
+      =/  cb  (~(get by cache) key)
+      =?  this  ?=(^ cb)
+        =/  pc  (~(get by comments.u.cb) pid)
+        ?~  pc  this
+        =/  pst  (~(get by posts.u.cb) pid)
+        =/  new-cb  u.cb(comments (~(put by comments.u.cb) pid (~(del by u.pc) cid)))
+        =?  new-cb  ?=(^ pst)
+          new-cb(posts (~(put by posts.new-cb) pid u.pst(comment-count ?:((gth comment-count.u.pst 0) (dec comment-count.u.pst) 0))))
+        this(cache (~(put by cache) key new-cb))
       [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
     ::  pin/unpin post: POST /b/{host}/{name}/{post-id}/pin
         [%b @ @ @ %pin ~]
