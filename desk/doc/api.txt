@@ -1,0 +1,83 @@
+# furum MCP API Reference
+
+## Reading Data (scry-agent tool)
+
+Use the `scry-agent` MCP tool with `agent: "furum"` and these paths:
+
+### List all hosted boards
+Path: `/api/boards/json`
+Returns: Array of boards with name, title, description, post count, public flag.
+
+### Get board posts
+Path: `/api/board/BOARD-NAME/json`
+Returns: Board info (name, title, description) and array of posts sorted newest first.
+Each post has: id, author, title, url, body, created, points, comments count.
+Example: `/api/board/general/json`
+
+### Get post with comments
+Path: `/api/post/BOARD-NAME/POST-ID/json`
+Returns: Post details and array of all comments.
+Each comment has: id, parent (null if top-level), author, body, created, points.
+Example: `/api/post/general/0/json`
+
+### Get notifications
+Path: `/api/notifications/json`
+Returns: Array of notifications with title, body, url, time, read status.
+
+### Get followed remote boards
+Path: `/api/cache/json`
+Returns: Array of cached remote boards with host, name, title, post count, paid-until.
+
+## Writing Data (poke-our-agent tool)
+
+Use the `poke-our-agent` MCP tool with `agent: "furum"` and `mark: "furum-action"`.
+The `data` field is a Hoon expression.
+
+### Create a post
+data: `[%new-post %BOARD-NAME 'Post Title' ~ `'Post body text']`
+For link posts: `[%new-post %BOARD-NAME 'Post Title' `'https://example.com' `'Optional body']`
+For link-only posts: `[%new-post %BOARD-NAME 'Post Title' `'https://example.com' ~]`
+
+### Comment on a post
+data: `[%new-comment %BOARD-NAME POST-ID ~ 'Comment text']`
+Reply to a comment: `[%new-comment %BOARD-NAME POST-ID `PARENT-COMMENT-ID 'Reply text']`
+
+### Vote
+Upvote post: `[%upvote %BOARD-NAME [%post POST-ID]]`
+Downvote post: `[%downvote %BOARD-NAME [%post POST-ID]]`
+Remove vote: `[%remove-vote %BOARD-NAME [%post POST-ID]]`
+Vote on comment: `[%upvote %BOARD-NAME [%comment POST-ID COMMENT-ID]]`
+
+### Create a board
+data: `[%create-board %board-name 'Board Title' 'Board description' %poster]`
+Default role options: %reader, %poster, %mod
+
+### Edit board info
+data: `[%edit-board-info %BOARD-NAME 'New Title' 'New description']`
+
+### Delete a post
+data: `[%delete-post %BOARD-NAME POST-ID]`
+
+### Delete a comment
+data: `[%delete-comment %BOARD-NAME POST-ID COMMENT-ID]`
+
+### Pin/unpin a post
+data: `[%pin-post %BOARD-NAME POST-ID %.y]` (pin)
+data: `[%pin-post %BOARD-NAME POST-ID %.n]` (unpin)
+
+### Set user role
+data: `[%set-role %BOARD-NAME ~ship-name %mod]`
+Role options: %reader, %poster, %mod
+
+### Mark notifications as read
+data: `[%mark-notifications-read ~]`
+
+### Create a backup
+data: `[%backup-to-clay ~]`
+
+## Notes
+- Board names are @tas (lowercase, hyphens, no spaces): %my-board
+- Post and comment IDs are @ud (unsigned integers): 0, 1, 2
+- Ship names include the sig: ~zod, ~sampel-palnet
+- `~` means null/none, backtick-wrapping means "some": `'text' is (unit @t) with value
+- %.y is true, %.n is false

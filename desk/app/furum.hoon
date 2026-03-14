@@ -2505,6 +2505,104 @@
     =/  name=board-name  i.t.t.path
     ?~  brd=(~(get by boards) name)  [~ ~]
     ``noun+!>(u.brd)
+  ::  -- JSON endpoints for MCP / external tools --
+  ::  scry with: /api/ENDPOINT/json
+  ::
+      [%x %api %boards ~]
+    =/  entries=(list json)
+      %+  turn  ~(tap by boards)
+      |=  [name=board-name brd=board]
+      ^-  json
+      %-  pairs:enjs:format
+      :~  ['name' s+name]
+          ['title' s+title.info.brd]
+          ['description' s+description.info.brd]
+          ['posts' (numb:enjs:format ~(wyt by posts.brd))]
+          ['public' b+public.info.brd]
+      ==
+    ``json+!>([%a entries])
+  ::
+      [%x %api %board @ ~]
+    =/  name=board-name  i.t.t.t.path
+    =/  brd  (~(get by boards) name)
+    ?~  brd  [~ ~]
+    =/  post-list=(list json)
+      %+  turn
+        %+  sort  ~(val by posts.u.brd)
+        |=  [a=post b=post]
+        (gth created.a created.b)
+      |=  =post
+      ^-  json
+      =/  up=@ud  ~(wyt in up-votes.post)
+      =/  dn=@ud  ~(wyt in down-votes.post)
+      %-  pairs:enjs:format
+      :~  ['id' (numb:enjs:format id.post)]
+          ['author' s+(scot %p author.post)]
+          ['title' s+title.post]
+          ['url' ?~(url.post ~ s+u.url.post)]
+          ['body' ?~(body.post ~ s+u.body.post)]
+          ['created' s+(scot %da created.post)]
+          ['points' (numb:enjs:format ?:((gte up dn) (sub up dn) 0))]
+          ['comments' (numb:enjs:format comment-count.post)]
+      ==
+    ``json+!>((pairs:enjs:format ~[['name' s+name] ['title' s+title.info.u.brd] ['description' s+description.info.u.brd] ['posts' [%a post-list]]]))
+  ::
+      [%x %api %post @ @ ~]
+    =/  name=board-name  i.t.t.t.path
+    =/  pid=@ud  (slav %ud i.t.t.t.t.path)
+    =/  brd  (~(get by boards) name)
+    ?~  brd  [~ ~]
+    =/  pst  (~(get by posts.u.brd) pid)
+    ?~  pst  [~ ~]
+    =/  cmts  (~(gut by comments.u.brd) pid *(map comment-id comment))
+    =/  comment-list=(list json)
+      %+  turn
+        %+  sort  ~(val by cmts)
+        |=  [a=comment b=comment]
+        (gth created.a created.b)
+      |=  =comment
+      ^-  json
+      =/  up=@ud  ~(wyt in up-votes.comment)
+      =/  dn=@ud  ~(wyt in down-votes.comment)
+      %-  pairs:enjs:format
+      :~  ['id' (numb:enjs:format id.comment)]
+          ['parent' ?~(parent.comment ~ (numb:enjs:format u.parent.comment))]
+          ['author' s+(scot %p author.comment)]
+          ['body' s+body.comment]
+          ['created' s+(scot %da created.comment)]
+          ['points' (numb:enjs:format ?:((gte up dn) (sub up dn) 0))]
+      ==
+    =/  up=@ud  ~(wyt in up-votes.u.pst)
+    =/  dn=@ud  ~(wyt in down-votes.u.pst)
+    ``json+!>((pairs:enjs:format ~[['id' (numb:enjs:format id.u.pst)] ['author' s+(scot %p author.u.pst)] ['title' s+title.u.pst] ['url' ?~(url.u.pst ~ s+u.url.u.pst)] ['body' ?~(body.u.pst ~ s+u.body.u.pst)] ['created' s+(scot %da created.u.pst)] ['points' (numb:enjs:format ?:((gte up dn) (sub up dn) 0))] ['comments' [%a comment-list]]]))
+  ::
+      [%x %api %notifications ~]
+    =/  notif-list=(list json)
+      %+  turn  notifications
+      |=  n=notification
+      ^-  json
+      %-  pairs:enjs:format
+      :~  ['title' s+title.n]
+          ['body' s+body.n]
+          ['url' ?~(url.n ~ s+u.url.n)]
+          ['time' s+(scot %da time.n)]
+          ['read' b+read.n]
+      ==
+    ``json+!>([%a notif-list])
+  ::
+      [%x %api %cache ~]
+    =/  entries=(list json)
+      %+  turn  ~(tap by cache)
+      |=  [[host=@p name=board-name] cb=cached-board]
+      ^-  json
+      %-  pairs:enjs:format
+      :~  ['host' s+(scot %p host)]
+          ['name' s+name]
+          ['title' s+title.info.cb]
+          ['posts' (numb:enjs:format ~(wyt by posts.cb))]
+          ['paid-until' ?~(paid-until.cb ~ s+(scot %da u.paid-until.cb))]
+      ==
+    ``json+!>([%a entries])
   ==
 ::
 ++  on-agent
