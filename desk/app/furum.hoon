@@ -2519,6 +2519,7 @@
           ['description' s+description.info.brd]
           ['posts' (numb:enjs:format ~(wyt by posts.brd))]
           ['public' b+public.info.brd]
+          ['paid' b+?=(^ payment.brd)]
       ==
     ``json+!>([%a entries])
   ::
@@ -2526,6 +2527,7 @@
     =/  name=board-name  i.t.t.t.path
     =/  brd  (~(get by boards) name)
     ?~  brd  [~ ~]
+    ?^  payment.u.brd  [~ ~]  ::  hide paid board content
     =/  post-list=(list json)
       %+  turn
         %+  sort  ~(val by posts.u.brd)
@@ -2552,6 +2554,7 @@
     =/  pid=@ud  (slav %ud i.t.t.t.t.path)
     =/  brd  (~(get by boards) name)
     ?~  brd  [~ ~]
+    ?^  payment.u.brd  [~ ~]  ::  hide paid board content
     =/  pst  (~(get by posts.u.brd) pid)
     ?~  pst  [~ ~]
     =/  cmts  (~(gut by comments.u.brd) pid *(map comment-id comment))
