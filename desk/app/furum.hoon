@@ -623,6 +623,8 @@
   ++  handle-board-restore
     |=  dat=board-restore-payload
     ^-  (quip card _this)
+    ::  only the ship owner can restore boards
+    ?>  =(src.bowl our.bowl)
     ::  only accept restores for boards we host
     ?>  =(our.bowl host.info.cached-board.dat)
     ::  board must already exist (host created it as a target for restore)
@@ -999,8 +1001,8 @@
       =/  brd  (~(got by boards) name.act)
       ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-post src.bowl brd)
-      =/  post-comments  (~(got by comments.brd) post.act)
-      =/  next-cid  (~(got by next-comment-ids.brd) post.act)
+      =/  post-comments  (~(gut by comments.brd) post.act *(map comment-id comment))
+      =/  next-cid  (~(gut by next-comment-ids.brd) post.act 0)
       =/  =comment
         :*  id=next-cid
             parent=parent.act
@@ -1054,8 +1056,12 @@
     ::
         %delete-comment
       =/  brd  (~(got by boards) name.act)
-      =/  post-comments  (~(got by comments.brd) post.act)
-      =/  =comment  (~(got by post-comments) id.act)
+      =/  pc  (~(get by comments.brd) post.act)
+      ?~  pc  `this
+      =/  cm  (~(get by u.pc) id.act)
+      ?~  cm  `this
+      =/  =comment  u.cm
+      =/  post-comments  u.pc
       ?>  (can-delete src.bowl author.comment brd)
       =/  pst  (~(got by posts.brd) post.act)
       =/  new-brd
@@ -1563,6 +1569,9 @@
           (send-html eyre-id 404 (render-error:fl "board not found" dark))
         ::  paywall check
         ?.  (has-paid-access our.bowl u.brd now.bowl)
+          ?~  payment.u.brd
+            ::  no payment config — shouldn't reach here, but don't crash
+            (send-html eyre-id 200 (render-error:fl "board configuration error" dark))
           =/  pnd=?  =('payment' (~(gut by args) 'pending' ''))
           =/  ln-nonce=@t  (~(gut by args) 'nonce' '')
           =/  ln-pending=?  =('lightning' (~(gut by args) 'pending' ''))
@@ -1571,8 +1580,8 @@
             ?~  inv
               (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}")
             =/  bolt=(unit @t)  bolt11.u.inv
-            (send-html eyre-id 200 (render-lightning-invoice:fl host info.u.brd (need payment.u.brd) bolt dark))
-          (send-html eyre-id 200 (render-paywall:fl host info.u.brd (need payment.u.brd) (~(get by paid.u.brd) our.bowl) dark pnd))
+            (send-html eyre-id 200 (render-lightning-invoice:fl host info.u.brd u.payment.u.brd bolt dark))
+          (send-html eyre-id 200 (render-paywall:fl host info.u.brd u.payment.u.brd (~(get by paid.u.brd) our.bowl) dark pnd))
         =/  post-list=(list post)  ~(val by posts.u.brd)
         =/  im=?  (is-mod our.bowl u.brd)
         =/  srt  (parse-sort:fl args)
@@ -2180,22 +2189,25 @@
     ^-  (quip card _this)
     ?-    -.target
         %post
-      =/  pst  (~(got by posts.brd) id.target)
-      =/  new-up  ?:(=(direction %up) (~(put in up-votes.pst) who) (~(del in up-votes.pst) who))
-      =/  new-down  ?:(=(direction %down) (~(put in down-votes.pst) who) (~(del in down-votes.pst) who))
-      =/  new-pst  pst(up-votes new-up, down-votes new-down)
+      =/  pst  (~(get by posts.brd) id.target)
+      ?~  pst  `this
+      =/  new-up  ?:(=(direction %up) (~(put in up-votes.u.pst) who) (~(del in up-votes.u.pst) who))
+      =/  new-down  ?:(=(direction %down) (~(put in down-votes.u.pst) who) (~(del in down-votes.u.pst) who))
+      =/  new-pst  u.pst(up-votes new-up, down-votes new-down)
       =/  new-brd  brd(posts (~(put by posts.brd) id.target new-pst))
       :_  this(boards (~(put by boards) name new-brd))
       :~  (give-board-update name [%vote-update target new-up new-down])
       ==
     ::
         %comment
-      =/  pc  (~(got by comments.brd) post.target)
-      =/  cmt  (~(got by pc) id.target)
-      =/  new-up  ?:(=(direction %up) (~(put in up-votes.cmt) who) (~(del in up-votes.cmt) who))
-      =/  new-down  ?:(=(direction %down) (~(put in down-votes.cmt) who) (~(del in down-votes.cmt) who))
-      =/  new-cmt  cmt(up-votes new-up, down-votes new-down)
-      =/  new-brd  brd(comments (~(put by comments.brd) post.target (~(put by pc) id.target new-cmt)))
+      =/  pc  (~(get by comments.brd) post.target)
+      ?~  pc  `this
+      =/  cmt  (~(get by u.pc) id.target)
+      ?~  cmt  `this
+      =/  new-up  ?:(=(direction %up) (~(put in up-votes.u.cmt) who) (~(del in up-votes.u.cmt) who))
+      =/  new-down  ?:(=(direction %down) (~(put in down-votes.u.cmt) who) (~(del in down-votes.u.cmt) who))
+      =/  new-cmt  u.cmt(up-votes new-up, down-votes new-down)
+      =/  new-brd  brd(comments (~(put by comments.brd) post.target (~(put by u.pc) id.target new-cmt)))
       :_  this(boards (~(put by boards) name new-brd))
       :~  (give-board-update name [%vote-update target new-up new-down])
       ==
@@ -2689,10 +2701,13 @@
       ::  resolve mint public keys from cached keysets
       =/  key-map=(map @ud @t)  (~(gut by mint-keysets.u.brd) keyset-id.u.pending *(map @ud @t))
       =/  mint-keys=(map @ud [x=@ y=@])
-        %-  ~(run by key-map)
-        |=  hex=@t
+        %-  ~(rep by key-map)
+        |=  [[amt=@ud hex=@t] acc=(map @ud [x=@ y=@])]
         =/  result  (mule |.((hex-to-point:ca hex)))
-        ?:(?=([%& *] result) p.result [0 0])
+        ?.  ?=([%& *] result)
+          ~&  >>>  [%invalid-mint-key amt hex]
+          acc
+        (~(put by acc) amt p.result)
       =/  new-proofs=(list cashu-proof)
         %:  finalize-proofs:ca
           sigs
@@ -3184,10 +3199,13 @@
       `this
     =/  key-map=(map @ud @t)  (~(gut by mint-keysets.u.brd) keyset-id.u.pending *(map @ud @t))
     =/  mint-keys=(map @ud [x=@ y=@])
-      %-  ~(run by key-map)
-      |=  hex=@t
+      %-  ~(rep by key-map)
+      |=  [[amt=@ud hex=@t] acc=(map @ud [x=@ y=@])]
       =/  result  (mule |.((hex-to-point:ca hex)))
-      ?:(?=([%& *] result) p.result [0 0])
+      ?.  ?=([%& *] result)
+        ~&  >>>  [%invalid-mint-key amt hex]
+        acc
+      (~(put by acc) amt p.result)
     =/  new-proofs=(list cashu-proof)
       %:  finalize-proofs:ca
         sigs

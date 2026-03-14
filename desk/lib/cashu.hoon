@@ -260,7 +260,7 @@
   =/  idx=@ud  0
   =/  acc=(list [amount=@ud id=@t secret=@t c=@t])  ~
   |-
-  ?:  |((gte idx (lent sigs)) (gte idx (lent secrets)))
+  ?:  |((gte idx (lent sigs)) (gte idx (lent secrets)) (gte idx (lent blinding-factors)))
     (flop acc)
   =/  [amt=@ud kid=@t c-hex=@t]  (snag idx sigs)
   =/  secret=@t  (snag idx secrets)
