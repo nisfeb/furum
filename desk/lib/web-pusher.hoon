@@ -151,7 +151,7 @@
       (js-response:gen:server default-sw-js)
     ::  all other push routes require authentication
     ::
-    ?.  |(authenticated.inbound-request (lte (met 3 src.bowl) 8))
+    ?.  authenticated.inbound-request
       :_  this
       (err-cards:hep eyre-id 403 'not authenticated')
     =^  cards  pstate
@@ -371,6 +371,15 @@
             ?=(^ au-j)  ?=(%s -.u.au-j)
         ==
       [(err-cards eyre-id 400 'missing fields') pstate]
+    ::  validate field lengths
+    ?.  (lte (met 3 p.u.id-j) 256)
+      [(err-cards eyre-id 400 'id too long') pstate]
+    ?.  (lte (met 3 p.u.ep-j) 2.048)
+      [(err-cards eyre-id 400 'endpoint too long') pstate]
+    ::  validate endpoint is https
+    =/  ep-tape=tape  (trip p.u.ep-j)
+    ?.  =("https://" (scag 8 ep-tape))
+      [(err-cards eyre-id 400 'endpoint must be https') pstate]
     =/  dh-octs=(unit octs)  (de-base64url:web-push p.u.dh-j)
     =/  au-octs=(unit octs)  (de-base64url:web-push p.u.au-j)
     ?~  dh-octs  [(err-cards eyre-id 400 'invalid p256dh') pstate]

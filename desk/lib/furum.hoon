@@ -389,6 +389,26 @@
   ?~  lo  [i.t $(t t.t)]
   [`@tD`(add (mul u.hi 16) u.lo) $(t t.t.t.t)]
 ::
+++  urle
+  |=  t=tape
+  ^-  tape
+  ?~  t  ~
+  =/  c=@tD  i.t
+  ?:  ?|  &((gte c 'a') (lte c 'z'))
+          &((gte c 'A') (lte c 'Z'))
+          &((gte c '0') (lte c '9'))
+          =(c '-')  =(c '_')  =(c '.')  =(c '~')
+      ==
+    [c $(t t.t)]
+  =/  hi=@tD  (to-hex-char (div c 16))
+  =/  lo=@tD  (to-hex-char (mod c 16))
+  ['%' hi lo $(t t.t)]
+::
+++  to-hex-char
+  |=  n=@
+  ^-  @tD
+  ?:((lth n 10) (add '0' n) (add 'A' (sub n 10)))
+::
 ++  hex-char
   |=  c=@tD
   ^-  (unit @)
@@ -533,6 +553,9 @@
   |=  url=@t
   ^-  ?
   =/  u=tape  (cass (trip url))
+  ::  only allow http/https URLs
+  ?.  |(?=(^ (find "http://" u)) ?=(^ (find "https://" u)))
+    %.n
   =/  exts=(list tape)
     ~[".jpg" ".jpeg" ".png" ".gif" ".webp" ".svg" ".bmp"]
   |-
@@ -1892,7 +1915,7 @@
         ;p: Pay {price-text} sats for {days-text} days of access
       ==
       ;div(style "text-align: center; margin: 16px 0")
-        ;img(src "https://api.qrserver.com/v1/create-qr-code/?size=280x280&data={(trip u.bolt11)}", alt "Lightning Invoice QR Code", style "max-width: 280px");
+        ;img(src "https://api.qrserver.com/v1/create-qr-code/?size=280x280&data={(urle (trip u.bolt11))}", alt "Lightning Invoice QR Code", style "max-width: 280px");
       ==
       ;div(style "margin: 12px 0")
         ;label: Lightning Invoice
