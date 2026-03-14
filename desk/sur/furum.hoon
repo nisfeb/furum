@@ -149,6 +149,9 @@
       [%upvote name=board-name target=vote-target]
       [%downvote name=board-name target=vote-target]
       [%remove-vote name=board-name target=vote-target]
+      ::  backup and restore
+      [%backup-to-clay ~]
+      [%restore-from-clay ~]
   ==
 ::
 ::  registry actions: pokes to the registry ship
@@ -161,6 +164,21 @@
       [%curate-board name=board-name curated=?]
       [%add-registry-admin who=@p]
       [%remove-registry-admin who=@p]
+      [%refresh-registry ~]
+  ==
+::
+::  backup types
+::
++$  furum-backup
+  $:  boards=(map board-name board)
+      registry=(map board-name directory-entry)
+      registry-admins=(set @p)
+      timestamp=@da
+  ==
+::
++$  board-restore-payload
+  $:  name=board-name
+      =cached-board
   ==
 ::
 ::  updates: subscription facts from a board host

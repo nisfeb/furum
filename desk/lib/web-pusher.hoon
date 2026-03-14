@@ -97,9 +97,16 @@
       %-  mole  |.
       !<([%web-pusher pusher-state vase] old-state)
     ?~  old
-      ::  state doesn't match current schema -- reinitialize
+      ::  state doesn't match current schema -- initialize pusher state
+      ::  but run inner agent's on-load (not on-init) to avoid duplicate subs
       ::
-      on-init
+      =.  config.pstate
+        (some (generate-vapid-keypair:web-push eny.bowl sub-id))
+      =^  cards  agent  (on-load:ag old-state)
+      :_  this
+      :*  [%pass /web-pusher/eyre %arvo %e %connect [~ base] dap.bowl]
+          cards
+      ==
     =/  [%web-pusher ps=pusher-state inner=vase]  u.old
     =.  pstate  ps
     =^  cards  agent  (on-load:ag inner)

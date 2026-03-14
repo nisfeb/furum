@@ -127,6 +127,7 @@
       state-10
       state-11
       state-12
+      state-13
   ==
 ::
 +$  state-2
@@ -343,6 +344,25 @@
       pending-ln-invoices=(map @t pending-ln-invoice)
   ==
 ::
++$  state-13
+  $:  %13
+      registry=(map board-name directory-entry)
+      boards=(map board-name board)
+      cache=(map [@p board-name] cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
+      board-seen=(map [@p board-name] @da)
+      post-seen=(map [@p board-name post-id] @da)
+      pending-swaps=(map @t pending-swap)
+      pending-melts=(map @t pending-melt)
+      pending-mints=(map @t pending-mint-quote)
+      pending-ln-invoices=(map @t pending-ln-invoice)
+      backup-dates=(list @da)
+  ==
+::
 +$  card  card:agent:gall
 --
 ::
@@ -397,6 +417,7 @@
   ^-  card
   [%give %fact ~[/board/[name]] %furum-update !>(upd)]
 ::
+::
 --
 ::
 %-  agent:dbug
@@ -406,7 +427,7 @@
       %.y
       0
     ==
-=|  state-12
+=|  state-13
 =*  state  -
 ^-  agent:gall
 |_  =bowl:gall
@@ -441,7 +462,7 @@
       ^-  cached-board
       =/  ni=board-info  [name.info.oc title.info.oc description.info.oc host.info.oc created.info.oc default-role.info.oc %.n]
       [ni roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %3
     =/  new-boards=(map board-name board)
@@ -454,7 +475,7 @@
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %4
     =/  new-boards=(map board-name board)
@@ -467,7 +488,7 @@
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %5
     =/  new-boards=(map board-name board)
@@ -480,7 +501,7 @@
       |=  oc=s6-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %6
     =/  new-boards=(map board-name board)
@@ -493,7 +514,7 @@
       |=  oc=s6-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %7
     =/  new-boards=(map board-name board)
@@ -506,7 +527,7 @@
       |=  oc=s7-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ ~]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %8
     =/  new-boards=(map board-name board)
@@ -520,7 +541,7 @@
       |=  oc=s9-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %9
     ::  migrate cache and boards: add payment.mint field
@@ -535,7 +556,7 @@
       |=  oc=s9-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %10
     ::  migrate boards, clear cache and re-subscribe
@@ -549,7 +570,7 @@
       %+  turn  ~(tap in subs.old)
       |=  [host=@p name=board-name]
       [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
-    :_  this(state [%12 registry.old new-boards *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    :_  this(state [%13 registry.old new-boards *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
     resub-cards
   ::
       %11
@@ -566,9 +587,13 @@
       ^-  cached-board
       =/  new-pay=(unit payment-config)  ?~(payment.oc ~ `[price.u.payment.oc interval.u.payment.oc ~])
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc new-pay paid-until.oc]
-    `this(state [%12 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old pending-swaps.old pending-melts.old *(map @t pending-mint-quote) *(map @t pending-ln-invoice)])
+    `this(state [%13 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old pending-swaps.old pending-melts.old *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
   ::
       %12
+    ::  add backup-dates field
+    `this(state [%13 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~])
+  ::
+      %13
     ::  clear stale pending ops — iris requests don't survive restart
     `this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt), pending-mints *(map @t pending-mint-quote), pending-ln-invoices *(map @t pending-ln-invoice)))
   ==
@@ -589,7 +614,54 @@
       %handle-http-request
     =/  req  !<([@ta inbound-request:eyre] vase)
     (handle-http req)
+  ::
+      %furum-board-restore
+    =/  dat  !<(board-restore-payload vase)
+    (handle-board-restore dat)
   ==
+  ::
+  ++  handle-board-restore
+    |=  dat=board-restore-payload
+    ^-  (quip card _this)
+    ::  only accept restores for boards we host
+    ?>  =(our.bowl host.info.cached-board.dat)
+    ::  board must already exist (host created it as a target for restore)
+    =/  existing  (~(get by boards) name.dat)
+    ?~  existing
+      ~&  >>>  [%restore-rejected-no-board name.dat src.bowl]
+      `this
+    ::  reconstruct full board from cached data
+    =/  cb  cached-board.dat
+    =/  next-pid=@ud
+      =/  pids=(list post-id)  ~(tap in ~(key by posts.cb))
+      ?~  pids  0
+      .+((roll `(list post-id)`pids max))
+    =/  next-cids=(map post-id comment-id)
+      %-  ~(run by comments.cb)
+      |=  cm=(map comment-id comment)
+      ^-  comment-id
+      =/  cids=(list comment-id)  ~(tap in ~(key by cm))
+      ?~  cids  0
+      .+((roll `(list comment-id)`cids max))
+    =/  restored=board
+      :*  info=info.cb
+          roles=roles.cb
+          next-post-id=next-pid
+          posts=posts.cb
+          comments=comments.cb
+          next-comment-ids=next-cids
+          pinned=pinned.cb
+          sidebar=sidebar.cb
+          payment=payment.cb
+          paid=paid.u.existing
+          wallet=wallet.u.existing
+          mint-keysets=mint-keysets.u.existing
+      ==
+    ~&  >>>  [%board-restored name.dat src.bowl (lent ~(tap by posts.cb)) next-pid]
+    ::  kick board subscribers so they re-subscribe and get fresh content
+    :_  this(boards (~(put by boards) name.dat restored))
+    :~  [%give %kick ~[/board/[name.dat]] ~]
+    ==
   ::
   ++  handle-action
     |=  act=action
@@ -883,9 +955,20 @@
           comments       (~(put by comments.brd) id.post *(map comment-id comment))
           next-comment-ids  (~(put by next-comment-ids.brd) id.post 0)
         ==
+      =/  post-push-cards=(list card)
+        ?:  =(src.bowl our.bowl)  ~
+        =/  post-url=@t
+          (crip "/apps/furum/b/{(scow %p our.bowl)}/{(trip name.act)}/{(a-co:co id.post)}")
+        =/  =push-send:push
+          :*  targets=(sy our.bowl ~)
+              tags=(sy %new-posts ~)
+              exclude=~
+              msg=[title='New post on your board' body=(crip "{(scow %p src.bowl)} posted '{(trip title.act)}' to {(trip name.act)}") icon=~ url=`post-url tag=~]
+          ==
+        :~  [%pass /push/new-post %agent [our dap]:bowl %poke %push-send !>(push-send)]
+        ==
       :_  this(boards (~(put by boards) name.act new-brd))
-      :~  (give-board-update name.act [%new-post post])
-      ==
+      (weld ~[(give-board-update name.act [%new-post post])] post-push-cards)
     ::
         %delete-post
       =/  brd  (~(got by boards) name.act)
@@ -934,20 +1017,38 @@
           next-comment-ids  (~(put by next-comment-ids.brd) post.act +(next-cid))
           posts  (~(put by posts.brd) post.act pst(comment-count +(comment-count.pst)))
         ==
+      =/  post-url=@t
+        (crip "/apps/furum/b/{(scow %p our.bowl)}/{(trip name.act)}/{(a-co:co post.act)}")
       =/  push-cards=(list card)
         ::  notify post author when someone else comments on their post
         ::
-        ?:  =(src.bowl author.pst)  ~
-        =/  post-url=@t
-          (crip "/apps/furum/b/{(scow %p our.bowl)}/{(trip name.act)}/{(a-co:co post.act)}")
-        =/  =push-send:push
-          :*  targets=(sy author.pst ~)
-              tags=~
-              exclude=~
-              msg=[title='New comment on your post' body=(crip "{(scow %p src.bowl)} commented on '{(trip title.pst)}'") icon=~ url=`post-url tag=~]
+        =/  comment-cards=(list card)
+          ?:  =(src.bowl author.pst)  ~
+          =/  =push-send:push
+            :*  targets=(sy author.pst ~)
+                tags=(sy %comments ~)
+                exclude=~
+                msg=[title='New comment on your post' body=(crip "{(scow %p src.bowl)} commented on '{(trip title.pst)}'") icon=~ url=`post-url tag=~]
+            ==
+          :~  [%pass /push/comment %agent [our dap]:bowl %poke %push-send !>(push-send)]
           ==
-        :~  [%pass /push/comment %agent [our dap]:bowl %poke %push-send !>(push-send)]
-        ==
+        ::  notify parent comment author on reply
+        ::
+        =/  reply-cards=(list card)
+          ?~  parent.act  ~
+          =/  parent-comment  (~(get by post-comments) u.parent.act)
+          ?~  parent-comment  ~
+          ?:  =(src.bowl author.u.parent-comment)  ~
+          ?:  =(author.u.parent-comment author.pst)  ~  :: already notified above
+          =/  =push-send:push
+            :*  targets=(sy author.u.parent-comment ~)
+                tags=(sy %comments ~)
+                exclude=~
+                msg=[title='Reply to your comment' body=(crip "{(scow %p src.bowl)} replied to your comment on '{(trip title.pst)}'") icon=~ url=`post-url tag=~]
+            ==
+          :~  [%pass /push/reply %agent [our dap]:bowl %poke %push-send !>(push-send)]
+          ==
+        (weld comment-cards reply-cards)
       :_  this(boards (~(put by boards) name.act new-brd))
       (weld ~[(give-board-update name.act [%new-comment post.act comment])] push-cards)
     ::
@@ -1002,6 +1103,34 @@
       ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %remove)
+    ::
+        %backup-to-clay
+      ?>  =(src.bowl our.bowl)
+      =/  bak=furum-backup  [boards registry registry-admins now.bowl]
+      ~&  >>>  [%backup-created now.bowl (lent ~(tap by boards)) (lent ~(tap by registry))]
+      =/  date=@ta  (scot %da now.bowl)
+      :_  this(backup-dates [now.bowl backup-dates])
+      :~  [%pass /write-backup %arvo %c %info %furum %& [/backup/[date]/noun %ins noun+!>(`*`bak)]~]
+      ==
+    ::
+        %restore-from-clay
+      ?>  =(src.bowl our.bowl)
+      ?~  backup-dates
+        ~&  >>>  [%restore-no-backups-found ~]
+        `this
+      =/  latest=@t  (scot %da i.backup-dates)
+      ~&  >>>  [%restoring-from latest]
+      =/  bak=furum-backup
+        ;;(furum-backup .^(* %cx /(scot %p our.bowl)/furum/(scot %da now.bowl)/backup/[latest]/noun))
+      ~&  >>>  [%restore-loaded (lent ~(tap by boards.bak)) (lent ~(tap by registry.bak)) timestamp.bak]
+      ::  kick all current subscribers before overwriting state
+      =/  board-kicks=(list card)
+        %+  turn  ~(tap by boards)
+        |=  [name=board-name *]
+        ^-  card
+        [%give %kick ~[/board/[name]] ~]
+      :_  this(boards boards.bak, registry registry.bak, registry-admins registry-admins.bak)
+      [[%give %kick ~[/directory] ~] board-kicks]
     ==
   ::
   ++  handle-registry-action
@@ -1067,6 +1196,15 @@
       ?>  =(our.bowl registry-ship)
       ?>  =(src.bowl our.bowl)
       `this(registry-admins (~(del in registry-admins) who.act))
+    ::
+        %refresh-registry
+      ?>  =(our.bowl registry-ship)
+      ?>  =(src.bowl our.bowl)
+      ::  kick all /directory subscribers — they will auto-resubscribe
+      ::  and receive a fresh %initial with the full registry
+      :_  this
+      :~  [%give %kick ~[/directory] ~]
+      ==
     ==
   ::
   ++  handle-http
@@ -1389,14 +1527,25 @@
         ?:  (gth newest u.last-seen)  `key
         ~
       (send-html eyre-id 200 (render-home:fl tagged %tag `tag all-tags =(our.bowl registry-ship) dark bwn))
-    ::  registry admin (registry host and delegates)
+    ::  registry admin (redirect to admin page)
         [%registry ~]
-      ?.  ?|  =(our.bowl registry-ship)
-              (~(has in registry-admins) our.bowl)
-          ==
-        (send-html eyre-id 403 (render-error:fl "registry admin is only available to the registry host and delegates" dark))
+      (redirect eyre-id "/apps/furum/admin")
+    ::  admin page
+        [%admin ~]
+      ?.  =(our.bowl src.bowl)
+        (send-html eyre-id 403 (render-error:fl "admin is only available to the ship owner" dark))
+      =/  boards-list=(list [board-name board])  ~(tap by boards)
+      =/  backups=(list @t)
+        (turn backup-dates |=(d=@da (scot %da d)))
+      =/  is-registry=?  =(our.bowl registry-ship)
       =/  entries=(list directory-entry)  ~(val by registry)
-      (send-html eyre-id 200 (render-registry-admin:fl entries registry-admins =(our.bowl registry-ship) dark))
+      =/  subs-list=(list [@p board-name])  ~(tap in subs)
+      =/  cache-list=(list [@p board-name cached-board])
+        %+  turn  ~(tap by cache)
+        |=  [[host=@p name=board-name] cb=cached-board]
+        [host name cb]
+      =/  msg=@t  (~(gut by args) 'msg' '')
+      (send-html eyre-id 200 (render-admin:fl our.bowl dark boards-list backups is-registry entries registry-admins subs-list cache-list msg))
     ::  guide page
         [%guide ~]
       (send-html eyre-id 200 (render-guide:fl dark))
@@ -1655,33 +1804,59 @@
         (trip value.i.ref)
       =^  redir  this  (redirect eyre-id referer)
       [(weld cards redir) this]
+    ::  admin backup: POST /admin/backup
+        [%admin %backup ~]
+      ?>  =(our.bowl src.bowl)
+      =^  cards  this  (handle-action [%backup-to-clay ~])
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin?msg=backup-created")
+      [(weld cards redir) this]
+    ::  admin restore: POST /admin/restore
+        [%admin %restore ~]
+      ?>  =(our.bowl src.bowl)
+      =^  cards  this  (handle-action [%restore-from-clay ~])
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin?msg=restore-complete")
+      [(weld cards redir) this]
+    ::  admin resub: POST /admin/resub
+        [%admin %resub ~]
+      ?>  =(our.bowl src.bowl)
+      =/  host=@p  (slav %p (~(gut by form) 'host' ''))
+      =/  name=board-name  (crip (trip (~(gut by form) 'name' '')))
+      =^  cards  this  (handle-action [%resub host name])
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin?msg=resubscribed")
+      [(weld cards redir) this]
+    ::  admin refresh registry: POST /admin/refresh-registry
+        [%admin %refresh-registry ~]
+      ?>  =(our.bowl src.bowl)
+      =^  cards  this  (handle-registry-action [%refresh-registry ~])
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin")
+      [(weld cards redir) this]
     ::  add registry admin: POST /registry/add-admin
         [%registry %add-admin ~]
       =/  who-val=@t  (~(gut by form) 'who' '')
       =/  who=@p  (slav %p who-val)
       =^  cards  this  (handle-registry-action [%add-registry-admin who])
-      =^  redir  this  (redirect eyre-id "/apps/furum/registry")
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin")
       [(weld cards redir) this]
     ::  remove registry admin: POST /registry/remove-admin
         [%registry %remove-admin ~]
       =/  who-val=@t  (~(gut by form) 'who' '')
       =/  who=@p  (slav %p who-val)
       =^  cards  this  (handle-registry-action [%remove-registry-admin who])
-      =^  redir  this  (redirect eyre-id "/apps/furum/registry")
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin")
       [(weld cards redir) this]
     ::  tag board: POST /registry/tag
         [%registry %tag ~]
       =/  name=@t  (~(gut by form) 'name' '')
       =/  tag=@t  (~(gut by form) 'tag' '')
       =^  cards  this  (handle-registry-action [%tag-board (crip (cass (trip name))) (crip (cass (trip tag)))])
-      =^  redir  this  (redirect eyre-id "/apps/furum/registry")
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin")
       [(weld cards redir) this]
     ::  untag board: POST /registry/untag
         [%registry %untag ~]
       =/  name=@t  (~(gut by form) 'name' '')
       =/  tag=@t  (~(gut by form) 'tag' '')
       =^  cards  this  (handle-registry-action [%untag-board (crip (cass (trip name))) (crip (cass (trip tag)))])
-      =^  redir  this  (redirect eyre-id "/apps/furum/registry")
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin")
       [(weld cards redir) this]
     ::  curate board: POST /registry/curate
         [%registry %curate ~]
@@ -1689,7 +1864,7 @@
       =/  curated-val=@t  (~(gut by form) 'curated' '')
       =/  curated=?  =('true' curated-val)
       =^  cards  this  (handle-registry-action [%curate-board (crip (cass (trip name))) curated])
-      =^  redir  this  (redirect eyre-id "/apps/furum/registry")
+      =^  redir  this  (redirect eyre-id "/apps/furum/admin")
       [(weld cards redir) this]
     ::  create board: POST /create
         [%create ~]
@@ -2387,6 +2562,9 @@
   |=  [=wire =sign-arvo]
   ^-  (quip card _this)
   ?+    wire  (on-arvo:def wire sign-arvo)
+      [%write-backup ~]
+    `this
+  ::
       [%eyre %connect ~]
     `this
   ::
@@ -2540,8 +2718,15 @@
       =/  final-brd  new-brd(paid (~(put by paid.new-brd) who.u.pending paid-until))
       =.  pending-swaps  (~(del by pending-swaps) nonce)
       ~&  >>>  [%ecash-swap-success name.u.pending who.u.pending (lent new-proofs) paid-until]
+      =/  pay-push=push-send:push
+        :*  targets=(sy our.bowl ~)
+            tags=(sy %payments ~)
+            exclude=~
+            msg=[title='New paid subscriber' body=(crip "{(scow %p who.u.pending)} paid for access to {(trip name.u.pending)}") icon=~ url=~ tag=~]
+        ==
       :_  this(boards (~(put by boards) name.u.pending final-brd))
       :~  (give-board-update name.u.pending [%paid-update who.u.pending paid-until])
+          [%pass /push/payment %agent [our dap]:bowl %poke %push-send !>(pay-push)]
       ==
     ==
   ::
@@ -3025,9 +3210,16 @@
     =/  final-brd  new-brd(paid (~(put by paid.new-brd) who.u.pending paid-until))
     =.  pending-mints  (~(del by pending-mints) nonce)
     ~&  >>>  [%ln-mint-success name.u.pending who.u.pending (lent new-proofs) paid-until]
+    =/  pay-push=push-send:push
+      :*  targets=(sy our.bowl ~)
+          tags=(sy %payments ~)
+          exclude=~
+          msg=[title='New paid subscriber' body=(crip "{(scow %p who.u.pending)} paid for access to {(trip name.u.pending)}") icon=~ url=~ tag=~]
+      ==
     :_  this(boards (~(put by boards) name.u.pending final-brd))
     :~  (give-board-update name.u.pending [%paid-update who.u.pending paid-until])
         [%give %kick ~[/invoice/[name.u.pending]/[nonce]] ~]
+        [%pass /push/payment %agent [our dap]:bowl %poke %push-send !>(pay-push)]
     ==
   ==
 ::

@@ -182,41 +182,58 @@
     var btn=document.getElementById("push-toggle");
     if(!btn||!("PushManager" in window)||!("serviceWorker" in navigator))return;
     btn.style.display="inline";
-    navigator.serviceWorker.ready.then(function(reg){
-      reg.pushManager.getSubscription().then(function(sub){
-        btn.textContent=sub?"unmute":"notify";
-        btn.onclick=function(){
-          if(sub){
-            var id=sub.endpoint.split("/").pop();
-            fetch("/apps/furum/~web-pusher/unsubscribe",{
-              method:"POST",credentials:"include",
-              headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({id:"b-"+id})
-            }).then(function(){return sub.unsubscribe()}).then(function(){
-              sub=null;btn.textContent="notify"
-            });
-          } else {
-            fetch("/apps/furum/~web-pusher/vapid-key",{credentials:"include"})
-            .then(function(r){return r.text()})
-            .then(function(key){
-              var raw=atob(key.replace(/-/g,"+").replace(/_/g,"/"));
-              var arr=new Uint8Array(raw.length);
-              for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
-              return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:arr})
-            }).then(function(s){
-              sub=s;
-              var k=sub.toJSON();
-              var id="b-"+k.endpoint.split("/").pop();
-              return fetch("/apps/furum/~web-pusher/subscribe",{
-                method:"POST",credentials:"include",
-                headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({id:id,endpoint:k.endpoint,p256dh:k.keys.p256dh,auth:k.keys.auth})
-              })
-            }).then(function(){btn.textContent="unmute"});
-          }
-        };
-      });
+    var sub=null;
+    var swReady=navigator.serviceWorker.ready;
+    function updateBtn(on){
+      btn.textContent=on?"notifications: on":"notifications: off";
+      btn.title=on?"Click to disable notifications":"Click to enable notifications";
+    }
+    swReady.then(function(reg){
+      return reg.pushManager.getSubscription();
+    }).then(function(s){
+      sub=s;
+      updateBtn(!!sub);
+    }).catch(function(){
+      updateBtn(false);
     });
+    btn.onclick=function(){
+      btn.disabled=true;
+      if(sub){
+        var id=sub.endpoint.split("/").pop();
+        fetch("/apps/furum/~web-pusher/unsubscribe",{
+          method:"POST",credentials:"include",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({id:"b-"+id})
+        }).then(function(){return sub.unsubscribe()}).then(function(){
+          sub=null;updateBtn(false);btn.disabled=false;
+        }).catch(function(){btn.disabled=false;});
+      } else {
+        swReady.then(function(reg){
+          return fetch("/apps/furum/~web-pusher/vapid-key",{credentials:"include"})
+          .then(function(r){return r.text()})
+          .then(function(key){
+            var raw=atob(key.replace(/-/g,"+").replace(/_/g,"/"));
+            var arr=new Uint8Array(raw.length);
+            for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+            return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:arr});
+          });
+        }).then(function(s){
+          sub=s;
+          var k=sub.toJSON();
+          var id="b-"+k.endpoint.split("/").pop();
+          return fetch("/apps/furum/~web-pusher/subscribe",{
+            method:"POST",credentials:"include",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({id:id,endpoint:k.endpoint,p256dh:k.keys.p256dh,auth:k.keys.auth})
+          });
+        }).then(function(){
+          updateBtn(true);btn.disabled=false;
+        }).catch(function(e){
+          btn.disabled=false;
+          alert("Could not enable notifications: "+e.message);
+        });
+      }
+    };
   })();
   '''
 ::
@@ -692,13 +709,14 @@
   ^-  manx
   =/  style-node=manx
     [[%style ~] [[[%$ [%$ (trip furum-css)]~] ~] ~]]
-  =/  sw-script=tape
-    ;:  weld
-      (trip 'if("serviceWorker" in navigator)navigator.serviceWorker.register("/apps/furum/sw",{scope:"/apps/furum"});')
-      (trip push-js)
-    ==
+  =/  sw-script=tape  (trip 'if("serviceWorker" in navigator)navigator.serviceWorker.register("/apps/furum/sw",{scope:"/apps/furum"});')
   =/  sw-node=manx
     [[%script ~] [[[%$ [%$ sw-script] ~] ~] ~]]
+  =/  push-script=manx
+    [[%script ~] [[[%$ [%$ (trip push-js)] ~] ~] ~]]
+  =/  push-node=manx
+    ?.  public  push-script
+    ;span;
   =/  body-attrs=mart
     ?:(dark ~[['class' "dark"]] ~)
   =/  toggle-label=tape
@@ -714,31 +732,32 @@
         ;a(href "https://urbit.org/overview/running-urbit", style "color: #ffdede; text-decoration: none", target "_blank", rel "noopener noreferrer"): Get on Urbit
       ==
     ;span.dark-toggle
+      ;a(href "/apps/furum/admin", style "margin-right: 12px"): admin
       ;a(href "/apps/furum/guide", style "margin-right: 12px"): guide
-      ;button#push-toggle(type "button", style "display:none; margin-right: 8px"): notify
+      ;button#push-toggle(type "button", style "display:none; margin-right: 8px"): notifications
       ;form(method "post", action "/apps/furum/dark-mode", style "display:inline")
         ;button(type "submit"): {toggle-label}
       ==
     ==
-  =/  body-node=manx
-    :_  :~
-      ;div#hd
-        ;+  right-section
-        ;+  ?:  public
-              ;span(style "color: #fff; font-weight: bold; font-size: 18px"): furum
-            ;a/"/apps/furum": furum
-        ;+  ?.  public
-              ;span.nav
-                ;+  ;/("  |  ")
-                ;+  nav-link
-              ==
-            ;span;
-      ==
-      ;div.ct
-        ;*  content
-      ==
+  =/  hd-node=manx
+    ;div#hd
+      ;+  right-section
+      ;+  ?:  public
+            ;span(style "color: #fff; font-weight: bold; font-size: 18px"): furum
+          ;a/"/apps/furum": furum
+      ;+  ?.  public
+            ;span.nav
+              ;+  ;/("  |  ")
+              ;+  nav-link
+            ==
+          ;span;
     ==
-    [%body body-attrs]
+  =/  ct-node=manx
+    ;div.ct
+      ;*  content
+    ==
+  =/  body-children=marl  ~[hd-node ct-node push-node]
+  =/  body-node=manx  [[%body body-attrs] body-children]
   ;html
     ;head
       ;meta(charset "utf-8");
@@ -2115,8 +2134,298 @@
   %-  page-shell
   [(crip "furum - mod {(trip name.board-info)}") mod-content `[board-path (trip title.board-info)] %.n dark]
 ::
-::  REGISTRY ADMIN PAGE
+::  ADMIN PAGE
 ::
+++  render-admin
+  |=  $:  our=@p  dark=?
+          boards-list=(list [board-name board])
+          backups=(list @t)
+          is-registry=?
+          entries=(list directory-entry)
+          admins=(set @p)
+          subs-list=(list [@p board-name])
+          cache-list=(list [@p board-name cached-board])
+          msg=@t
+      ==
+  ^-  manx
+  =/  status-banner=manx
+    ?:  =('' msg)  ;span;
+    ?:  =('backup-created' msg)
+      ;div.paywall-info
+        ;p: Backup created successfully.
+      ==
+    ?:  =('restore-complete' msg)
+      ;div.paywall-info
+        ;p: Restore complete. All subscribers have been kicked and will re-sync.
+      ==
+    ?:  =('resubscribed' msg)
+      ;div.paywall-info
+        ;p: Re-subscribed to remote board.
+      ==
+    ;span;
+  ::  -- backups section --
+  =/  backup-rows=marl
+    ?~  backups
+      :~  ;p.me: No backups found. Create your first backup below.
+      ==
+    %+  turn  backups
+    |=  date=@t
+    ^-  manx
+    ;div(style "padding: 4px 0")
+      ;span: {(trip date)}
+    ==
+  =/  backup-header=marl
+    :~
+      ;h3: Backups
+      ;p.me: Back up all boards, registry, and admin data to Clay.
+      ;form(method "post", action "/apps/furum/admin/backup")
+        ;input.btn(type "submit", value "Create Backup Now");
+      ==
+      ;br;
+      ;h4: Existing Backups
+    ==
+  =/  backup-footer=marl
+    :~
+      ;hr;
+      ;form(method "post", action "/apps/furum/admin/restore")
+        ;p.me: Restore from the most recent backup. Warning: this overwrites all current boards and registry data.
+        ;input.btn(type "submit", value "Restore Latest Backup", style "background: #c00");
+      ==
+    ==
+  =/  backup-section=marl  ;:(welp backup-header backup-rows backup-footer)
+  ::  -- boards overview --
+  =/  board-rows=marl
+    ?~  boards-list
+      :~  ;p.me: No boards hosted on this computer.
+      ==
+    %+  turn  boards-list
+    |=  [name=board-name brd=board]
+    ^-  manx
+    =/  post-count=@ud  ~(wyt by posts.brd)
+    =/  comment-count=@ud
+      %+  roll  ~(val by comments.brd)
+      |=  [cm=(map comment-id comment) acc=@ud]
+      (add acc ~(wyt by cm))
+    =/  role-count=@ud  ~(wyt by roles.brd)
+    =/  paid-text=tape
+      ?~  payment.brd  "free"
+      "paid ({(commafy price.u.payment.brd)} sats)"
+    ;div(style "padding: 6px 0; border-bottom: 1px solid #d0ccc4")
+      ;strong
+        ;a(href "/apps/furum/b/{(scow %p our)}/{(trip name)}"): {(trip name)}
+      ==
+      ;span.me: {" "}{(commafy post-count)} posts, {(commafy comment-count)} comments, {(commafy role-count)} roles, {paid-text}
+    ==
+  =/  boards-section=marl
+    %+  welp
+      :~  ;hr;
+          ;h3: Hosted Boards
+      ==
+    board-rows
+  ::  -- subscriptions overview --
+  =/  sub-rows=marl
+    ?~  cache-list
+      :~  ;p.me: Not subscribed to any remote boards.
+      ==
+    %+  turn  cache-list
+    |=  [host=@p name=board-name cb=cached-board]
+    ^-  manx
+    =/  post-count=@ud  ~(wyt by posts.cb)
+    =/  paid-text=tape
+      ?~  paid-until.cb  ""
+      " | paid until {(trip (scot %da u.paid-until.cb))}"
+    ;div(style "padding: 6px 0; border-bottom: 1px solid #d0ccc4")
+      ;strong
+        ;a(href "/apps/furum/b/{(scow %p host)}/{(trip name)}"): {(scow %p host)}/{(trip name)}
+      ==
+      ;span.me: {" "}{(commafy post-count)} cached posts{paid-text}
+      ;form(method "post", action "/apps/furum/admin/resub", style "display:inline; margin-left: 8px")
+        ;input(type "hidden", name "host", value (scow %p host));
+        ;input(type "hidden", name "name", value (trip name));
+        ;button.va(type "submit"): resub
+      ==
+    ==
+  =/  subs-section=marl
+    %+  welp
+      :~  ;hr;
+          ;h3: Remote Subscriptions
+          ;p.me: Boards you follow on other computers.
+      ==
+    sub-rows
+  ::  -- registry section (conditional) --
+  =/  registry-section=marl
+    ?.  is-registry  ~
+    =/  admin-list=(list @p)  ~(tap in admins)
+    =/  admin-rows=marl
+      %+  turn  admin-list
+      |=  who=@p
+      ^-  manx
+      ;tr
+        ;td: {(scow %p who)}
+        ;td
+          ;form(method "post", action "/apps/furum/registry/remove-admin", style "display:inline")
+            ;input(type "hidden", name "who", value "{(scow %p who)}");
+            ;input.btn(type "submit", value "remove");
+          ==
+        ==
+      ==
+    =/  admin-table=manx
+      ?.  (gth (lent admin-list) 0)
+        ;p.me: No delegates added yet.
+      ;table.mod
+        ;thead
+          ;tr
+            ;th: Delegate
+            ;th: Action
+          ==
+        ==
+        ;tbody
+          ;*  admin-rows
+        ==
+      ==
+    =/  entry-rows=marl
+      ?~  entries
+        :~  ;p.me: No boards registered.
+        ==
+      %+  turn  entries
+      |=  entry=directory-entry
+      ^-  manx
+      =/  tag-text=tape
+        %+  roll  ~(tap in tags.entry)
+        |=  [tag=@tas acc=tape]
+        ?:(=(acc "") (trip tag) "{acc}, {(trip tag)}")
+      =/  name-text=tape  (trip name.entry)
+      ;div.rw
+        ;div(style "width: 100%")
+          ;span.ti: {(trip title.entry)}
+          ;span.host: {" "}({(scow %p host.entry)})
+          ;span.me: {" "}curated: {?:(curated.entry "yes" "no")} | tags: {?:(=(tag-text "") "none" tag-text)}
+          ;div(style "margin-top: 4px")
+            ;form(method "post", action "/apps/furum/registry/curate", style "display:inline")
+              ;input(type "hidden", name "name", value name-text);
+              ;input(type "hidden", name "curated", value ?:(curated.entry "false" "true"));
+              ;input.btn(type "submit", value ?:(curated.entry "uncurate" "curate"));
+            ==
+            ;form(method "post", action "/apps/furum/registry/tag", style "display:inline; margin-left: 8px")
+              ;input(type "hidden", name "name", value name-text);
+              ;input(type "text", name "tag", placeholder "add tag", style "width: 100px");
+              ;input.btn(type "submit", value "tag");
+            ==
+            ;+  ?.  (gth ~(wyt in tags.entry) 0)
+                  ;span;
+                ;span(style "margin-left: 8px")
+                  ;*
+                  %+  turn  ~(tap in tags.entry)
+                  |=  tag=@tas
+                  ^-  manx
+                  ;form(method "post", action "/apps/furum/registry/untag", style "display:inline; margin-left: 4px")
+                    ;input(type "hidden", name "name", value name-text);
+                    ;input(type "hidden", name "tag", value (trip tag));
+                    ;input.btn(type "submit", value "x {(trip tag)}");
+                  ==
+                ==
+          ==
+        ==
+      ==
+    %+  welp
+    :~
+      ;hr;
+      ;h3: Registry Admin
+      ;p.me: Manage board curation, tags, and delegate admins.
+      ;h4: Delegate Admins
+      ;p.me: These computers can curate and tag boards.
+      ;form(method "post", action "/apps/furum/registry/add-admin")
+        ;div
+          ;label: computer (@p)
+          ;br;
+          ;input(type "text", name "who", required "", placeholder "~sampel-palnet");
+        ==
+        ;br;
+        ;input.btn(type "submit", value "add delegate");
+      ==
+      admin-table
+      ;hr;
+      ;h4: Registered Boards
+      ;form(method "post", action "/apps/furum/admin/refresh-registry", style "margin-bottom: 12px")
+        ;input.btn(type "submit", value "Refresh All Subscribers");
+        ;span.me: {" "}Kicks all directory subscribers so they re-sync.
+      ==
+    ==
+    entry-rows
+  ::  -- notifications section --
+  =/  notif-js=@t
+    '''
+    (function(){
+      var boxes=document.querySelectorAll(".notif-pref");
+      if(!boxes.length)return;
+      fetch("/apps/furum/~web-pusher/prefs",{credentials:"include"})
+      .then(function(r){return r.json()})
+      .then(function(tags){
+        boxes.forEach(function(cb){
+          if(tags.indexOf(cb.value)!==-1)cb.checked=true;
+        });
+      }).catch(function(){});
+      document.getElementById("notif-save").addEventListener("click",function(){
+        var tags=[];
+        boxes.forEach(function(cb){if(cb.checked)tags.push(cb.value)});
+        fetch("/apps/furum/~web-pusher/prefs",{
+          method:"POST",credentials:"include",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({tags:tags})
+        }).then(function(){
+          document.getElementById("notif-status").textContent="Saved!";
+          setTimeout(function(){document.getElementById("notif-status").textContent=""},2000);
+        });
+      });
+    })();
+    '''
+  =/  notif-script=manx  [[%script ~] [[[%$ [%$ (trip notif-js)] ~] ~] ~]]
+  =/  notif-section=marl
+    :~
+      ;hr;
+      ;h3: Notification Preferences
+      ;p.me: Choose which events trigger push notifications. You must enable notifications (click the button in the header) for these to work.
+      ;div(style "margin: 12px 0")
+        ;div(style "padding: 4px 0")
+          ;label
+            ;input.notif-pref(type "checkbox", value "comments");
+            ;+  ;/(" Comments on my posts and replies to my comments")
+          ==
+        ==
+        ;div(style "padding: 4px 0")
+          ;label
+            ;input.notif-pref(type "checkbox", value "new-posts");
+            ;+  ;/(" New posts on boards I host")
+          ==
+        ==
+        ;div(style "padding: 4px 0")
+          ;label
+            ;input.notif-pref(type "checkbox", value "payments");
+            ;+  ;/(" New paid subscribers")
+          ==
+        ==
+      ==
+      ;button.btn(type "button", id "notif-save"): Save Preferences
+      ;span(id "notif-status", style "margin-left: 12px; color: #5a7a8a");
+      notif-script
+    ==
+  ::  -- assemble page --
+  =/  admin-content=marl
+    ;:  welp
+      :~  ;h3: Admin
+          ;p.me: Computer-level administration for your furum instance.
+          status-banner
+      ==
+      backup-section
+      boards-section
+      notif-section
+      subs-section
+      registry-section
+    ==
+  %-  page-shell
+  :*  'furum - admin'  admin-content  ~  %.n  dark  ==
+::
+::  REGISTRY ADMIN PAGE
 ++  render-registry-admin
   |=  [entries=(list directory-entry) admins=(set @p) is-host=? dark=?]
   ^-  manx
@@ -2384,6 +2693,61 @@
         ;p: Paid access lasts for the duration set by the board owner. When your access expires, you'll see the paywall again and can pay to renew. If you pay before expiry, the new time is added to your remaining time.
         ;h4: For board owners
         ;p: The mod page shows your token wallet balance and a list of paid subscribers with their expiry dates. You can withdraw tokens to a Lightning wallet using the "melt to Lightning" feature — paste a Lightning invoice and the mint will pay it using your collected tokens.
+        ;hr;
+        ;h3: Notifications
+        ;p: furum supports browser push notifications. Click "notify" in the top-right header to enable them. Your browser will ask for permission. Once enabled, you'll receive notifications when someone comments on your posts. Click "mute" to disable notifications.
+        ;p: Push notifications require HTTPS. They work in both the browser and the installed PWA.
+        ;hr;
+        ;h3: Data and backups
+        ;p: All of your data lives on your Urbit computer. There is no cloud backup — if your computer's state is lost, your boards, posts, comments, and payment data are gone unless you have a backup.
+        ;h4: What is stored
+        ;p: Your computer stores:
+        ;ul
+          ;li
+            ;strong: Boards you host
+            ;+  ;/(" — all posts, comments, votes, roles, pinned posts, sidebar, payment configuration, paid subscriber list, ecash wallet, and mint keysets")
+          ==
+          ;li
+            ;strong: Cached remote boards
+            ;+  ;/(" — posts, comments, pinned posts, sidebar, and payment config for boards you follow on other computers. This is a read-only copy that updates in real time while connected")
+          ==
+          ;li
+            ;strong: Directory
+            ;+  ;/(" — the registry of all boards on the network (hosted by the registry computer)")
+          ==
+        ==
+        ;h4: Creating a backup
+        ;p: You can create backups from the admin page (click "admin" in the header) or from the dojo:
+        ;pre: :furum &furum-action [%backup-to-clay ~]
+        ;p: This saves all boards, the registry, and registry admins as a timestamped noun file on your %furum desk at /backup/~DATE/noun. Backups created from the admin page or dojo are tracked and listed on the admin page.
+        ;h4: Listing backups
+        ;p: The admin page shows all backups created since the tracking feature was added. To see all backup files in Clay (including older ones), run in dojo:
+        ;pre: +ls /=furum=/backup
+        ;h4: Restoring from a backup
+        ;p: You can restore from the admin page (click "Restore Latest Backup") or from the dojo:
+        ;pre: :furum &furum-action [%restore-from-clay ~]
+        ;p: This loads the most recent backup and replaces your current boards and registry. All subscribers are kicked and will automatically reconnect to receive the restored content. Note: this overwrites your current state entirely — any data created after the backup was taken will be lost.
+        ;h4: What backups include
+        ;ul
+          ;li: All boards with full content (posts, comments, votes, roles, pinned, sidebar)
+          ;li: Payment configuration, paid subscriber list, ecash wallet, and mint keysets
+          ;li: The full network directory (registry entries)
+          ;li: Registry admin list
+        ==
+        ;h4: What backups do not include
+        ;ul
+          ;li: Remote board caches (these re-sync automatically when you reconnect)
+          ;li: Follow list and dark mode preferences (minor settings)
+          ;li: Pending payment operations (these are transient)
+        ==
+        ;h4: Restoring a board from a subscriber
+        ;p: If you lose a board's data and don't have a backup, a subscriber who has a cached copy can help restore it. First, create an empty board with the same name. Then the subscriber sends their cached data to your computer. The restored board will have all posts, comments, roles, and settings from the subscriber's cache, but the paid subscriber list, ecash wallet, and mint keysets will be empty (since subscribers don't have that data).
+        ;h4: Recommendations
+        ;ul
+          ;li: Run backups regularly — daily if your boards are active. Consider automating this with a cron job or a behn timer.
+          ;li: Keep pier-level snapshots as a second layer of protection (e.g. GroundSeg daily snapshots).
+          ;li: After any major change (new board, payment config update, large influx of content), run a backup immediately.
+        ==
         ;hr;
         ;h3: Tips
         ;ul
