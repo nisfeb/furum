@@ -1425,26 +1425,31 @@
       =/  home-view=@t  (~(gut by args) 'view' 'feed')
       ?:  =('feed' home-view)
         ::  collect posts from all followed boards
+        ::  optimization: only take top N from each board before merging
+        =/  pg  (parse-page:fl args)
+        =/  need=@ud  (mul pg per-page:fl)
         =/  feed-posts=(list [host=@p board-name=board-name =post])
           %-  zing
           %+  turn  ~(tap in followed)
           |=  [host=@p name=board-name]
           ^-  (list [host=@p board-name=board-name =post])
-          ?:  =(host our.bowl)
-            =/  brd  (~(get by boards) name)
-            ?~  brd  ~
-            (turn ~(val by posts.u.brd) |=(p=post [host name p]))
-          =/  cb  (~(get by cache) [host name])
-          ?~  cb  ~
-          ::  skip paid boards we haven't paid for
-          ?:  ?&  ?=(^ payment.u.cb)
-                  ?|  ?=(~ paid-until.u.cb)
-                      (lte u.paid-until.u.cb now.bowl)
-                  ==
-              ==
-            ~
-          (turn ~(val by posts.u.cb) |=(p=post [host name p]))
-        =/  pg  (parse-page:fl args)
+          =/  post-list=(list post)
+            ?:  =(host our.bowl)
+              =/  brd  (~(get by boards) name)
+              ?~  brd  ~
+              ~(val by posts.u.brd)
+            =/  cb  (~(get by cache) [host name])
+            ?~  cb  ~
+            ::  skip paid boards we haven't paid for
+            ?:  ?&  ?=(^ payment.u.cb)
+                    ?|  ?=(~ paid-until.u.cb)
+                        (lte u.paid-until.u.cb now.bowl)
+                    ==
+                ==
+              ~
+            ~(val by posts.u.cb)
+          =/  sorted=(list post)  (sort-posts-by-new:fl post-list)
+          (turn (scag need sorted) |=(p=post [host name p]))
         (send-html eyre-id 200 (render-feed:fl feed-posts our.bowl now.bowl dark pg board-seen))
       =/  entries=(list directory-entry)  ~(val by registry)
       =/  all-tags=(set @tas)
