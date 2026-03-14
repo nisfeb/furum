@@ -2,6 +2,7 @@
 ::
 /-  *furum
 |%
+++  version  '0.5.0'
 ::
 ::  favicon SVG: digamma (Ϝ) on red background
 ::
@@ -780,7 +781,11 @@
     ;div.ct
       ;*  content
     ==
-  =/  body-children=marl  ~[hd-node ct-node notif-count-node]
+  =/  ft-node=manx
+    ;div(style "text-align: center; padding: 16px; font-size: 12px; color: #8a8a9a")
+      ;+  ;/("furum v{(trip version)}")
+    ==
+  =/  body-children=marl  ~[hd-node ct-node ft-node notif-count-node]
   =/  body-node=manx  [[%body body-attrs] body-children]
   ;html
     ;head
