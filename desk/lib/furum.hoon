@@ -2708,32 +2708,25 @@
 ++  render-loading
   |=  [url=tape dark=?]
   ^-  manx
+  =/  refresh=tape  "3;url={url}"
   =/  style-node=manx
     [[%style ~] [[[%$ [%$ (trip furum-css)]~] ~] ~]]
-  =/  lb=tape  (trip '{')
-  =/  rb=tape  (trip '}')
-  =/  qt=tape  (trip '"')
-  =/  timeout-js=tape
-    ;:  weld
-      "var s=Date.now(),u='"  url
-      "';var t=setInterval(function()"  lb
-      "if(Date.now()-s>30000)"  lb
-      "clearInterval(t);document.getElementById('load-msg').innerHTML="
-      "'The host may be offline. <a href='"  qt  "'+u+'"  qt  "'>Try again</a> or <a href='"  qt  "/apps/furum"  qt  "'>go home</a>.';"
-      rb  "else"  lb  "location.href=u;"  rb  rb  ",3000);"
-    ==
-  =/  load-script=manx  [[%script ~] [[[%$ [%$ timeout-js] ~] ~] ~]]
   ;html
     ;head
       ;meta(charset "utf-8");
       ;meta(name "viewport", content "width=device-width, initial-scale=1");
+      ;meta(http-equiv "refresh", content refresh);
       ;title: furum - loading
       ;+  style-node
     ==
     ;body
       ;div.ct
-        ;p#load-msg.me: Loading board data...
-        ;+  load-script
+        ;p.me: Loading board data...
+        ;p.me
+          ;a(href url): Retry
+          ;+  ;/(" | ")
+          ;a(href "/apps/furum"): Home
+        ==
       ==
     ==
   ==
