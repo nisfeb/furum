@@ -2086,6 +2086,8 @@
       [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
     ::  comment: POST /b/{host}/{name}/{post-id}/comment
         [%b @ @ @ %comment ~]
+      ?:  =(i.t.t.t.path 'mod')
+        (send-html eyre-id 404 (render-error:fl "not found" dark))
       =/  host=@p  (slav %p i.t.path)
       =/  name=board-name  i.t.t.path
       =/  pid=@ud  (slav %ud i.t.t.t.path)
@@ -2124,6 +2126,16 @@
       [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
     ::  delete post: POST /b/{host}/{name}/{post-id}/delete
         [%b @ @ @ %delete ~]
+      ?:  =(i.t.t.t.path 'mod')
+        ::  fall through to %mod %delete handler below
+        =/  host=@p  (slav %p i.t.path)
+        =/  name=board-name  i.t.t.path
+        ?.  =(host our.bowl)
+          (send-html eyre-id 403 (render-error:fl "can only delete local boards" dark))
+        =/  =action  [%delete-board name]
+        =^  cards  this  (handle-action action)
+        =^  redir  this  (redirect eyre-id "/apps/furum")
+        [(weld cards redir) this]
       =/  host=@p  (slav %p i.t.path)
       =/  name=board-name  i.t.t.path
       =/  pid=@ud  (slav %ud i.t.t.t.path)
