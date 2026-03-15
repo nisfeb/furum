@@ -1828,7 +1828,7 @@
               %+  lien  ~(val by pending-melts)
               |=(pm=pending-melt =(name name.pm))
           ==
-        =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
+        =/  sav=@t  (~(gut by args) 'saved' '')
         (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml sav paid.u.brd now.bowl prune.u.brd))
       ::  remote board - check my-roles
       =/  mr  (~(get by my-roles) [host name])
@@ -1838,7 +1838,7 @@
       ?~  cb
         (send-html eyre-id 404 (render-error:fl "board not found in cache" dark))
       =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
-      =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
+      =/  sav=@t  (~(gut by args) 'saved' '')
       (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml sav *(map @p @da) now.bowl ~))
     ::  backup wallet proofs: /b/{host}/{name}/mod/backup-proofs
         [%b @ @ %mod %backup-proofs ~]
@@ -2423,9 +2423,9 @@
         (send-html eyre-id 404 (render-error:fl "board not found" dark))
       ?:  =(our.bowl registry-ship)
         =^  cards  this  (handle-registry-action [%register name title.info.u.brd description.info.u.brd])
-        =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod")
+        =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod?saved=registered")
         [(weld cards redir) this]
-      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod")
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod?saved=registered")
       [[[%pass /register %agent [registry-ship %furum] %poke %furum-registry-action !>(`registry-action`[%register name title.info.u.brd description.info.u.brd])] redir] this]
     ::  delete board: POST /b/{host}/{name}/mod/delete
         [%b @ @ %mod %delete ~]

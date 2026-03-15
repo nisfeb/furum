@@ -1939,7 +1939,7 @@
   [(crip "furum - {(trip name.board-info)} - lightning payment") content `[board-path (trip title.board-info)] %.n dark]
 ::
 ++  render-mod
-  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved-payment=? paid=(map @p @da) now=@da prune=(unit prune-config)]
+  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved=@t paid=(map @p @da) now=@da prune=(unit prune-config)]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -2077,15 +2077,16 @@
       ;input(type "checkbox", name "enabled", value "on", checked "checked");
     ;input(type "checkbox", name "enabled", value "on");
   =/  saved-banner=manx
-    ?.  saved-payment  ;span;
+    ?:  =('' saved)  ;span;
     :-  [%div ~[['class' "paywall-info"]]]
-    :~  ;/("Payment config saved successfully.")
+    :~  ;/(?:  =('payment' saved)  "Payment config saved successfully."
+            ?:  =('registered' saved)  "Board registered in directory."
+            "Settings saved.")
     ==
   =/  payment-section=manx
     ?.  is-host  ;span;
     ;div
       ;h4: Paid Access
-      ;+  saved-banner
       ;p.me: Enable paid access to require ecash tokens for board access. Paid boards cannot be public.
       ;form(method "post", action "{board-path}/mod/payment")
         ;div
@@ -2212,6 +2213,7 @@
   =/  mod-content=marl
     :~  ;h3: Moderate {(trip title.board-info)}
         ;p.me: Default role: {(trip (role-to-text default-role.board-info))}
+        saved-banner
         info-section
         pub-section
         payment-section
