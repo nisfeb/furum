@@ -129,6 +129,7 @@
       state-12
       state-13
       state-14
+      state-15
   ==
 ::
 +$  state-2
@@ -218,6 +219,21 @@
       board-seen=(map [@p board-name] @da)
       post-seen=(map [@p board-name post-id] @da)
       pending-payments=(map @t [who=@p name=board-name amount=@ud])
+  ==
+::
++$  s14-board
+  $:  info=board-info
+      roles=(map @p role)
+      next-post-id=post-id
+      posts=(map post-id post)
+      comments=(map post-id (map comment-id comment))
+      next-comment-ids=(map post-id comment-id)
+      pinned=(set post-id)
+      sidebar=@t
+      payment=(unit payment-config)
+      paid=(map @p @da)
+      wallet=(map @t (list cashu-proof))
+      mint-keysets=(map @t (map @ud @t))
   ==
 ::
 +$  s11-board
@@ -367,6 +383,26 @@
 +$  state-14
   $:  %14
       registry=(map board-name directory-entry)
+      boards=(map board-name s14-board)
+      cache=(map [@p board-name] cached-board)
+      subs=(set [@p board-name])
+      dark-mode=(set @p)
+      registry-admins=(set @p)
+      my-roles=(map [@p board-name] role)
+      followed=(set [@p board-name])
+      board-seen=(map [@p board-name] @da)
+      post-seen=(map [@p board-name post-id] @da)
+      pending-swaps=(map @t pending-swap)
+      pending-melts=(map @t pending-melt)
+      pending-mints=(map @t pending-mint-quote)
+      pending-ln-invoices=(map @t pending-ln-invoice)
+      backup-dates=(list @da)
+      notifications=(list notification)
+  ==
+::
++$  state-15
+  $:  %15
+      registry=(map board-name directory-entry)
       boards=(map board-name board)
       cache=(map [@p board-name] cached-board)
       subs=(set [@p board-name])
@@ -448,7 +484,7 @@
       %.y
       0
     ==
-=|  state-14
+=|  state-15
 =*  state  -
 ^-  agent:gall
 |_  =bowl:gall
@@ -476,79 +512,79 @@
       |=  ob=old-board
       ^-  board
       =/  ni=board-info  [name.info.ob title.info.ob description.info.ob host.info.ob created.info.ob default-role.info.ob %.n]
-      [ni roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id) '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      [ni roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id) '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t)) ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=old-cached-board
       ^-  cached-board
       =/  ni=board-info  [name.info.oc title.info.oc description.info.oc host.info.oc created.info.oc default-role.info.oc %.n]
       [ni roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %3
     =/  new-boards=(map board-name board)
       %-  ~(run by boards.old)
       |=  ob=s4-board
       ^-  board
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id) '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id) '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t)) ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old *(set [@p board-name]) *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %4
     =/  new-boards=(map board-name board)
       %-  ~(run by boards.old)
       |=  ob=s4-board
       ^-  board
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id) '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob *(set post-id) '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t)) ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s4-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc *(set post-id) '' ~ ~]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %5
     =/  new-boards=(map board-name board)
       %-  ~(run by boards.old)
       |=  ob=s6-board
       ^-  board
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t)) ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s6-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old *(map [@p board-name] @da) *(map [@p board-name post-id] @da) *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %6
     =/  new-boards=(map board-name board)
       %-  ~(run by boards.old)
       |=  ob=s6-board
       ^-  board
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob '' ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t)) ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s6-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc '' ~ ~]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %7
     =/  new-boards=(map board-name board)
       %-  ~(run by boards.old)
       |=  ob=s7-board
       ^-  board
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob ~ *(map @p @da) *(map @t (list cashu-proof)) *(map @t (map @ud @t)) ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s7-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ ~]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %8
     =/  new-boards=(map board-name board)
@@ -556,13 +592,13 @@
       |=  ob=s8-board
       ^-  board
       =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob *(map @t (list cashu-proof)) *(map @t (map @ud @t))]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob *(map @t (list cashu-proof)) *(map @t (map @ud @t)) ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s9-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %9
     ::  migrate cache and boards: add payment.mint field
@@ -571,13 +607,13 @@
       |=  ob=s11-board
       ^-  board
       =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s9-cached-board
       ^-  cached-board
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc ~ paid-until.oc]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %10
     ::  migrate boards, clear cache and re-subscribe
@@ -586,12 +622,12 @@
       |=  ob=s11-board
       ^-  board
       =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob ~]
     =/  resub-cards=(list card)
       %+  turn  ~(tap in subs.old)
       |=  [host=@p name=board-name]
       [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
-    :_  this(state [%14 registry.old new-boards *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    :_  this(state [%15 registry.old new-boards *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
     resub-cards
   ::
       %11
@@ -601,26 +637,42 @@
       |=  ob=s11-board
       ^-  board
       =/  new-pay=(unit payment-config)  ?~(payment.ob ~ `[price.u.payment.ob interval.u.payment.ob ~])
-      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob]
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob new-pay paid.ob wallet.ob mint-keysets.ob ~]
     =/  new-cache=(map [@p board-name] cached-board)
       %-  ~(run by cache.old)
       |=  oc=s11-cached-board
       ^-  cached-board
       =/  new-pay=(unit payment-config)  ?~(payment.oc ~ `[price.u.payment.oc interval.u.payment.oc ~])
       [info.oc roles.oc posts.oc comments.oc pinned.oc sidebar.oc new-pay paid-until.oc]
-    `this(state [%14 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old pending-swaps.old pending-melts.old *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old new-boards new-cache subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old pending-swaps.old pending-melts.old *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %12
     ::  add backup-dates field
-    `this(state [%14 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
+    `this(state [%15 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~])
   ::
       %13
     ::  add notifications field
-    `this(state [%14 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) backup-dates.old ~])
+    `this(state [%15 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) backup-dates.old ~])
   ::
       %14
-    ::  clear stale pending ops — iris requests don't survive restart
-    `this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt), pending-mints *(map @t pending-mint-quote), pending-ln-invoices *(map @t pending-ln-invoice)))
+    ::  add prune field to boards
+    =/  new-boards=(map board-name board)
+      %-  ~(run by boards.old)
+      |=  ob=s14-board
+      ^-  board
+      [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob payment.ob paid.ob wallet.ob mint-keysets.ob ~]
+    `this(state [%15 registry.old new-boards cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) backup-dates.old notifications.old])
+  ::
+      %15
+    ::  clear stale pending ops and restart prune timers
+    =/  prune-cards=(list card)
+      %+  murn  ~(tap by boards.old)
+      |=  [name=board-name brd=board]
+      ^-  (unit card)
+      ?~  prune.brd  ~
+      `[%pass /prune/[name] %arvo %b %wait (add now.bowl ~h6)]
+    :_  this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt), pending-mints *(map @t pending-mint-quote), pending-ln-invoices *(map @t pending-ln-invoice)))
+    prune-cards
   ==
 ::
 ++  on-poke
@@ -683,6 +735,7 @@
           paid=paid.u.existing
           wallet=wallet.u.existing
           mint-keysets=mint-keysets.u.existing
+          prune=prune.u.existing
       ==
     ~&  >>>  [%board-restored name.dat src.bowl (lent ~(tap by posts.cb)) next-pid]
     ::  kick board subscribers so they re-subscribe and get fresh content
@@ -718,6 +771,7 @@
             paid=*(map @p @da)
             wallet=*(map @t (list cashu-proof))
             mint-keysets=*(map @t (map @ud @t))
+            prune=~
         ==
       `this(boards (~(put by boards) name.act board))
     ::
@@ -774,6 +828,18 @@
       :_  this(boards (~(put by boards) name.act new-brd))
       :~  (give-board-update name.act [%sidebar-update sidebar.act])
       ==
+    ::
+        %set-prune
+      ?>  =(src.bowl our.bowl)
+      =/  brd  (~(got by boards) name.act)
+      =/  new-brd  brd(prune prune.act)
+      ::  start prune timer if enabling (timer self-cancels if prune disabled later)
+      =/  timer-cards=(list card)
+        ?~  prune.act  ~
+        :~  [%pass /prune/[name.act] %arvo %b %wait (add now.bowl ~h6)]
+        ==
+      :_  this(boards (~(put by boards) name.act new-brd))
+      timer-cards
     ::
         %set-payment
       =/  brd  (~(got by boards) name.act)
@@ -1183,8 +1249,19 @@
         `this
       =/  latest=@t  (scot %da i.backup-dates)
       ~&  >>>  [%restoring-from latest]
+      =/  raw=*  .^(* %cx /(scot %p our.bowl)/furum/(scot %da now.bowl)/backup/[latest]/noun)
+      ::  try current format first, fall back to old format (boards without prune)
       =/  bak=furum-backup
-        ;;(furum-backup .^(* %cx /(scot %p our.bowl)/furum/(scot %da now.bowl)/backup/[latest]/noun))
+        =/  try  (mule |.(;;(furum-backup raw)))
+        ?:  ?=([%& *] try)  p.try
+        ::  old backup: boards lack prune field — migrate
+        =/  old  ;;([boards=(map board-name s14-board) registry=(map board-name directory-entry) registry-admins=(set @p) timestamp=@da] raw)
+        =/  new-boards=(map board-name board)
+          %-  ~(run by boards.old)
+          |=  ob=s14-board
+          ^-  board
+          [info.ob roles.ob next-post-id.ob posts.ob comments.ob next-comment-ids.ob pinned.ob sidebar.ob payment.ob paid.ob wallet.ob mint-keysets.ob ~]
+        [new-boards registry.old registry-admins.old timestamp.old]
       ~&  >>>  [%restore-loaded (lent ~(tap by boards.bak)) (lent ~(tap by registry.bak)) timestamp.bak]
       ::  kick all current subscribers before overwriting state
       =/  board-kicks=(list card)
@@ -1209,8 +1286,9 @@
       ==
     ::
         %unregister
-      =/  entry  (~(got by registry) name.act)
-      ?>  =(src.bowl host.entry)
+      =/  entry  (~(get by registry) name.act)
+      ?~  entry  `this
+      ?>  =(src.bowl host.u.entry)
       :_  this(registry (~(del by registry) name.act))
       :~  [%give %fact ~[/directory] %furum-registry-update !>(`registry-update`[%remove name.act])]
       ==
@@ -1220,9 +1298,10 @@
       ?>  ?|  =(src.bowl our.bowl)
               (~(has in registry-admins) src.bowl)
           ==
-      =/  entry  (~(got by registry) name.act)
-      =/  new-tags  (~(put in tags.entry) tag.act)
-      =/  new-entry  entry(tags new-tags)
+      =/  entry  (~(get by registry) name.act)
+      ?~  entry  `this
+      =/  new-tags  (~(put in tags.u.entry) tag.act)
+      =/  new-entry  u.entry(tags new-tags)
       :_  this(registry (~(put by registry) name.act new-entry))
       :~  [%give %fact ~[/directory] %furum-registry-update !>(`registry-update`[%tag name.act new-tags])]
       ==
@@ -1232,9 +1311,10 @@
       ?>  ?|  =(src.bowl our.bowl)
               (~(has in registry-admins) src.bowl)
           ==
-      =/  entry  (~(got by registry) name.act)
-      =/  new-tags  (~(del in tags.entry) tag.act)
-      =/  new-entry  entry(tags new-tags)
+      =/  entry  (~(get by registry) name.act)
+      ?~  entry  `this
+      =/  new-tags  (~(del in tags.u.entry) tag.act)
+      =/  new-entry  u.entry(tags new-tags)
       :_  this(registry (~(put by registry) name.act new-entry))
       :~  [%give %fact ~[/directory] %furum-registry-update !>(`registry-update`[%tag name.act new-tags])]
       ==
@@ -1244,8 +1324,9 @@
       ?>  ?|  =(src.bowl our.bowl)
               (~(has in registry-admins) src.bowl)
           ==
-      =/  entry  (~(got by registry) name.act)
-      =/  new-entry  entry(curated curated.act)
+      =/  entry  (~(get by registry) name.act)
+      ?~  entry  `this
+      =/  new-entry  u.entry(curated curated.act)
       :_  this(registry (~(put by registry) name.act new-entry))
       :~  [%give %fact ~[/directory] %furum-registry-update !>(`registry-update`[%curate name.act curated.act])]
       ==
@@ -1748,7 +1829,7 @@
               |=(pm=pending-melt =(name name.pm))
           ==
         =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
-        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml sav paid.u.brd now.bowl))
+        (send-html eyre-id 200 (render-mod:fl host info.u.brd roles.u.brd %.y dark sidebar.u.brd payment.u.brd wallet.u.brd pml sav paid.u.brd now.bowl prune.u.brd))
       ::  remote board - check my-roles
       =/  mr  (~(get by my-roles) [host name])
       ?.  ?~(mr %.n =(u.mr %mod))
@@ -1758,7 +1839,7 @@
         (send-html eyre-id 404 (render-error:fl "board not found in cache" dark))
       =/  pml=?  =('melt' (~(gut by args) 'pending' ''))
       =/  sav=?  =('payment' (~(gut by args) 'saved' ''))
-      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml sav *(map @p @da) now.bowl))
+      (send-html eyre-id 200 (render-mod:fl host info.u.cb roles.u.cb %.n dark sidebar.u.cb ~ *(map @t (list cashu-proof)) pml sav *(map @p @da) now.bowl ~))
     ::  backup wallet proofs: /b/{host}/{name}/mod/backup-proofs
         [%b @ @ %mod %backup-proofs ~]
       =/  host=@p  (slav %p i.t.path)
@@ -2139,6 +2220,32 @@
             [%pass /invoice/[name]/[nonce] %agent [host %furum] %watch /invoice/[name]/[nonce]]
         ==
       [(weld pay-cards redir) this]
+    ::  set prune config: POST /b/{host}/{name}/mod/prune
+        [%b @ @ %mod %prune ~]
+      =/  host=@p  (slav %p i.t.path)
+      =/  name=board-name  i.t.t.path
+      ?.  =(host our.bowl)
+        (send-html eyre-id 403 (render-error:fl "can only set prune on local boards" dark))
+      =/  enabled=@t  (~(gut by form) 'prune-enabled' 'off')
+      =/  prune=(unit prune-config)
+        ?.  =('on' enabled)  ~
+        =/  score-val=@t  (~(gut by form) 'min-score' '2')
+        =/  days-val=@t  (~(gut by form) 'after-days' '7')
+        =/  score=@ud
+          %+  roll  (trip score-val)
+          |=  [c=@ acc=@ud]
+          ?:  |((lth c '0') (gth c '9'))  acc
+          (add (mul acc 10) (sub c '0'))
+        =/  days=@ud
+          %+  roll  (trip days-val)
+          |=  [c=@ acc=@ud]
+          ?:  |((lth c '0') (gth c '9'))  acc
+          (add (mul acc 10) (sub c '0'))
+        `[score (mul days ~d1)]
+      =/  =action  [%set-prune name prune]
+      =^  cards  this  (handle-action action)
+      =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod")
+      [(weld cards redir) this]
     ::  set payment config: POST /b/{host}/{name}/mod/payment
         [%b @ @ %mod %payment ~]
       =/  host=@p  (slav %p i.t.path)
@@ -2850,6 +2957,44 @@
   ::
       [%eyre %connect ~]
     `this
+  ::
+      [%prune @ ~]
+    =/  name=board-name  i.t.wire
+    ?.  ?=([%behn %wake *] sign-arvo)  `this
+    =/  brd  (~(get by boards) name)
+    ?~  brd  `this
+    ?~  prune.u.brd  `this
+    =/  min-score=@ud  min-score.u.prune.u.brd
+    =/  after=@dr  after.u.prune.u.brd
+    =/  cutoff=@da  (sub now.bowl after)
+    ::  find posts to prune: older than cutoff, below min score, not pinned
+    =/  to-prune=(list post-id)
+      %+  murn  ~(tap by posts.u.brd)
+      |=  [id=post-id =post]
+      ^-  (unit post-id)
+      ?:  (~(has in pinned.u.brd) id)  ~
+      ?:  (gth created.post cutoff)  ~
+      =/  up=@ud  ~(wyt in up-votes.post)
+      =/  dn=@ud  ~(wyt in down-votes.post)
+      =/  score=@ud  ?:((gte up dn) (sub up dn) 0)
+      ?:  (gte score min-score)  ~
+      `id
+    ::  prune posts and their comments — build delete cards
+    =/  prune-cards=(list card)
+      (turn to-prune |=(pid=post-id (give-board-update name [%delete-post pid])))
+    ::  remove pruned posts from board
+    =/  pruned-brd=board
+      %+  roll  to-prune
+      |=  [pid=post-id b=_u.brd]
+      %=  b
+        posts             (~(del by posts.b) pid)
+        comments          (~(del by comments.b) pid)
+        next-comment-ids  (~(del by next-comment-ids.b) pid)
+      ==
+    ~&  >>>  [%prune-cycle name (lent to-prune)]
+    ::  schedule next prune cycle
+    :_  this(boards (~(put by boards) name pruned-brd))
+    [[%pass /prune/[name] %arvo %b %wait (add now.bowl ~h6)] prune-cards]
   ::
       [%iris %swap @ ~]
     =/  nonce=@t  i.t.t.wire

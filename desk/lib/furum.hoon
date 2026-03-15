@@ -2,7 +2,7 @@
 ::
 /-  *furum
 |%
-++  version  '0.5.0'
+++  version  '0.5.1'
 ::
 ::  favicon SVG: digamma (Ϝ) on red background
 ::
@@ -1939,7 +1939,7 @@
   [(crip "furum - {(trip name.board-info)} - lightning payment") content `[board-path (trip title.board-info)] %.n dark]
 ::
 ++  render-mod
-  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved-payment=? paid=(map @p @da) now=@da]
+  |=  [host=@p =board-info roles=(map @p role) is-host=? dark=? sidebar=@t payment=(unit payment-config) wallet=(map @t (list cashu-proof)) pending-melt=? saved-payment=? paid=(map @p @da) now=@da prune=(unit prune-config)]
   ^-  manx
   =/  board-path=tape
     "/apps/furum/b/{(scow %p host)}/{(trip name.board-info)}"
@@ -2032,6 +2032,39 @@
         ;textarea(name "sidebar", rows "6", cols "60"): {(trip sidebar)}
         ;br;
         ;input.btn(type "submit", value "save sidebar");
+      ==
+      ;hr;
+    ==
+  =/  prune-enabled=?  ?=(^ prune)
+  =/  prune-score=tape  ?~(prune "2" (a-co:co min-score.u.prune))
+  =/  prune-days=tape  ?~(prune "7" (a-co:co (div after.u.prune ~d1)))
+  =/  prune-checkbox=manx
+    ?:  prune-enabled
+      ;input(type "checkbox", name "prune-enabled", value "on", checked "checked");
+    ;input(type "checkbox", name "prune-enabled", value "on");
+  =/  prune-section=manx
+    ?.  is-host  ;span;
+    ;div
+      ;h4: Auto-Prune
+      ;p.me: Automatically delete posts below a minimum score after a set number of days. Pinned posts are never pruned.
+      ;form(method "post", action "{board-path}/mod/prune")
+        ;div(style "margin: 8px 0")
+          ;label
+            ;+  prune-checkbox
+            ;+  ;/(" Enable auto-prune")
+          ==
+        ==
+        ;div(style "margin: 8px 0")
+          ;label: Minimum score (posts below this get pruned)
+          ;br;
+          ;input(type "number", name "min-score", value prune-score, min "0", style "width: 80px");
+        ==
+        ;div(style "margin: 8px 0")
+          ;label: After days
+          ;br;
+          ;input(type "number", name "after-days", value prune-days, min "1", style "width: 80px");
+        ==
+        ;input.btn(type "submit", value "save prune settings");
       ==
       ;hr;
     ==
@@ -2185,6 +2218,7 @@
         wallet-section
         paid-section
         sidebar-section
+        prune-section
         ;h4: Set User Role
         role-form
         ;hr;
@@ -2774,9 +2808,12 @@
         ;h4: Sidebar
         ;p: The mod page has a sidebar editor. The sidebar appears on the right side of the board and is a good place for rules, links, or a community description.
         ;h4: Board settings
-        ;p: From the mod page you can update the board title, description, public visibility, and default role.
+        ;p: From the mod page you can edit the board title and description, toggle public visibility, and set the default role for new visitors.
+        ;h4: Auto-prune
+        ;p: Board hosts can enable automatic pruning to keep boards clean. Set a minimum score and a time window — posts older than the window with fewer upvotes than the minimum are automatically deleted. Pinned posts are never pruned. The system checks every 6 hours.
+        ;p: Example: set minimum score to 2 and after to 7 days. Any post older than a week with fewer than 2 net upvotes gets automatically removed. Active discussions survive; dead posts disappear.
         ;h4: Registry
-        ;p: Boards can be registered in the network directory so other users can discover them. From the mod page, register your board, add tags (up to 3), and it will appear in the directory for everyone.
+        ;p: Boards can be registered in the network directory so other users can discover them. From the mod page, click "Register in Directory" to register or re-register your board.
         ;hr;
         ;h3: Sorting
         ;p: Board posts can be sorted three ways using the toggle links at the top of the post list:
@@ -2804,13 +2841,25 @@
         ;h4: Paying with Cashu tokens
         ;p: Visitors can also paste Cashu ecash tokens directly. Get tokens from any Cashu wallet, paste them into the payment form, and submit.
         ;h4: Access duration
-        ;p: Paid access lasts for the duration set by the board owner. When your access expires, you'll see the paywall again and can pay to renew. If you pay before expiry, the new time is added to your remaining time.
+        ;p: Paid access lasts for the duration set by the board owner. When your access expires, you'll see the paywall again and can pay to renew. If you pay before expiry, the new time is added to your remaining time. Expired subscribers can still view their previously accessed content in read-only mode via a link on the paywall.
         ;h4: For board owners
         ;p: The mod page shows your token wallet balance and a list of paid subscribers with their expiry dates. You can withdraw tokens to a Lightning wallet using the "melt to Lightning" feature — paste a Lightning invoice and the mint will pay it using your collected tokens.
         ;hr;
         ;h3: Notifications
-        ;p: furum supports browser push notifications. Click "notify" in the top-right header to enable them. Your browser will ask for permission. Once enabled, you'll receive notifications when someone comments on your posts. Click "mute" to disable notifications.
+        ;p: furum has a notification panel and optional push notifications. Click "notifications" in the header to see all your recent activity — comments on your posts, replies to your comments, new posts on boards you host, and new paid subscribers. Each notification links directly to the relevant post.
+        ;h4: Push notifications
+        ;p: Enable push notifications from the admin page under Notification Preferences. Your browser will ask for permission. Once enabled, you'll receive push alerts even when furum isn't open. You can choose which categories of events trigger push notifications.
         ;p: Push notifications require HTTPS. They work in both the browser and the installed PWA.
+        ;hr;
+        ;h3: Admin page
+        ;p: Click "admin" in the header to access computer-level administration. The admin page includes:
+        ;ul
+          ;li: Backups — create and restore backups, view backup history
+          ;li: Hosted Boards — overview of all boards you host with post and comment counts
+          ;li: Notification Preferences — enable push notifications and choose which events trigger them
+          ;li: Remote Subscriptions — see boards you follow with a resub button to fix stale connections
+          ;li: Registry Admin — manage the network directory (registry host only)
+        ==
         ;hr;
         ;h3: Data and backups
         ;p: All of your data lives on your Urbit computer. There is no cloud backup — if your computer's state is lost, your boards, posts, comments, and payment data are gone unless you have a backup.

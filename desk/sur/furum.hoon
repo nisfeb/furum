@@ -70,6 +70,11 @@
       c=@t
   ==
 ::
++$  prune-config
+  $:  min-score=@ud
+      after=@dr
+  ==
+::
 +$  board
   $:  info=board-info
       roles=(map @p role)
@@ -83,6 +88,7 @@
       paid=(map @p @da)
       wallet=(map @t (list cashu-proof))
       mint-keysets=(map @t (map @ud @t))
+      prune=(unit prune-config)
   ==
 ::
 ::  registry directory entry
@@ -132,6 +138,8 @@
       [%pin-post name=board-name id=post-id pinned=?]
       ::  sidebar
       [%set-sidebar name=board-name sidebar=@t]
+      ::  auto-prune
+      [%set-prune name=board-name prune=(unit prune-config)]
       ::  payment
       [%set-payment name=board-name payment=(unit payment-config)]
       [%submit-payment name=board-name mint=@t tokens=@t]
