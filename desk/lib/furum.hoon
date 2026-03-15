@@ -2712,13 +2712,14 @@
     [[%style ~] [[[%$ [%$ (trip furum-css)]~] ~] ~]]
   =/  lb=tape  (trip '{')
   =/  rb=tape  (trip '}')
+  =/  qt=tape  (trip '"')
   =/  timeout-js=tape
     ;:  weld
       "var s=Date.now(),u='"  url
       "';var t=setInterval(function()"  lb
       "if(Date.now()-s>30000)"  lb
       "clearInterval(t);document.getElementById('load-msg').innerHTML="
-      "'The host may be offline. <a href=\"'+u+'\">Try again</a> or <a href=\"/apps/furum\">go home</a>.';"
+      "'The host may be offline. <a href='"  qt  "'+u+'"  qt  "'>Try again</a> or <a href='"  qt  "/apps/furum"  qt  "'>go home</a>.';"
       rb  "else"  lb  "location.href=u;"  rb  rb  ",3000);"
     ==
   =/  load-script=manx  [[%script ~] [[[%$ [%$ timeout-js] ~] ~] ~]]
