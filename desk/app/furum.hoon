@@ -1098,6 +1098,7 @@
       ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-post src.bowl brd)
       ?>  (check-rate-limit src.bowl name.act brd now.bowl rate-limits)
+
       =/  =post
         :*  id=next-post-id.brd
             author=src.bowl
@@ -2113,6 +2114,13 @@
         [%b @ @ %submit ~]
       =/  host=@p  (slav %p i.t.path)
       =/  name=board-name  i.t.t.path
+      ?:  ?&  =(host our.bowl)
+              =/  brd  (~(get by boards) name)
+              ?&  ?=(^ brd)
+                  !((check-rate-limit our.bowl name u.brd now.bowl rate-limits))
+              ==
+          ==
+        (send-html eyre-id 429 (render-error:fl "you're posting too fast — please wait a bit and try again" dark))
       =/  title=@t  (~(gut by form) 'title' '')
       =/  url-val=@t  (~(gut by form) 'url' '')
       =/  body-val=@t  (~(gut by form) 'body' '')
@@ -2148,6 +2156,13 @@
       =/  host=@p  (slav %p i.t.path)
       =/  name=board-name  i.t.t.path
       =/  pid=@ud  (slav %ud i.t.t.t.path)
+      ?:  ?&  =(host our.bowl)
+              =/  brd  (~(get by boards) name)
+              ?&  ?=(^ brd)
+                  !((check-rate-limit our.bowl name u.brd now.bowl rate-limits))
+              ==
+          ==
+        (send-html eyre-id 429 (render-error:fl "you're commenting too fast — please wait a bit and try again" dark))
       =/  body-val=@t  (~(gut by form) 'body' '')
       =/  parent-val=@t  (~(gut by form) 'parent' '')
       =/  parent=(unit comment-id)
