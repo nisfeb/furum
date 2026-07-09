@@ -2787,7 +2787,6 @@
         %watch-ack
       ?~  p.sign  `this
       ::  subscription failed — remove from subs so user can retry
-      ~&  >>>  [%board-watch-nack host name]
       `this(subs (~(del in subs) [host name]))
     ==
     ::  Lightning invoice subscription responses

@@ -2076,12 +2076,14 @@
     ?:  pay-enabled
       ;input(type "checkbox", name "enabled", value "on", checked "checked");
     ;input(type "checkbox", name "enabled", value "on");
+  =/  saved-msg=tape
+    ?:  =('payment' saved)  "Payment config saved."
+    ?:  =('registered' saved)  "Board registered in directory."
+    "Settings saved."
   =/  saved-banner=manx
     ?:  =('' saved)  ;span;
     :-  [%div ~[['class' "paywall-info"]]]
-    :~  ;/(?:  =('payment' saved)  "Payment config saved successfully."
-            ?:  =('registered' saved)  "Board registered in directory."
-            "Settings saved.")
+    :~  ;/(saved-msg)
     ==
   =/  payment-section=manx
     ?.  is-host  ;span;
