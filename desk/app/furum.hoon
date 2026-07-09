@@ -470,11 +470,6 @@
       =(role %poster)
   ==
 ::
-++  can-read
-  |=  [who=@p brd=board]
-  ^-  ?
-  %.y
-::
 ++  can-delete
   |=  [who=@p author=@p brd=board]
   ^-  ?
@@ -678,7 +673,7 @@
       %+  turn  ~(tap in subs.old)
       |=  [host=@p name=board-name]
       [%pass /board/(scot %p host)/[name] %agent [host %furum] %leave ~]
-    :_  this(state [%15 registry.old new-boards *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~ ~])
+    :_  this(state [%16 registry.old new-boards *(map [@p board-name] cached-board) *(set [@p board-name]) dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) ~ ~ ~])
     resub-cards
   ::
       %11
@@ -804,10 +799,12 @@
     ?-    -.act
         %create-board
       ?>  =(src.bowl our.bowl)
+      =/  safe-title=@t  (crip (scag 200 (trip title.act)))
+      =/  safe-desc=@t  (crip (scag 2.000 (trip description.act)))
       =/  =board-info
         :*  name.act
-            title.act
-            description.act
+            safe-title
+            safe-desc
             our.bowl
             now.bowl
             default-role.act
@@ -1218,7 +1215,7 @@
       =/  new-brd
         %=  brd
           comments  (~(put by comments.brd) post.act (~(del by post-comments) id.act))
-          posts  (~(put by posts.brd) post.act pst(comment-count (dec comment-count.pst)))
+          posts  (~(put by posts.brd) post.act pst(comment-count ?:((gth comment-count.pst 0) (dec comment-count.pst) 0)))
         ==
       :_  this(boards (~(put by boards) name.act new-brd))
       :~  (give-board-update name.act [%delete-comment post.act id.act])
@@ -1233,12 +1230,15 @@
       ==
     ::
         %follow-board
+      ?>  =(src.bowl our.bowl)
       `this(followed (~(put in followed) [host.act name.act]))
     ::
         %unfollow-board
+      ?>  =(src.bowl our.bowl)
       `this(followed (~(del in followed) [host.act name.act]))
     ::
         %toggle-dark-mode
+      ?>  =(src.bowl our.bowl)
       ?:  (~(has in dark-mode) src.bowl)
         `this(dark-mode (~(del in dark-mode) src.bowl))
       `this(dark-mode (~(put in dark-mode) src.bowl))
@@ -1246,19 +1246,16 @@
         %upvote
       =/  brd  (~(got by boards) name.act)
       ?>  (has-paid-access src.bowl brd now.bowl)
-      ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %up)
     ::
         %downvote
       =/  brd  (~(got by boards) name.act)
       ?>  (has-paid-access src.bowl brd now.bowl)
-      ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %down)
     ::
         %remove-vote
       =/  brd  (~(got by boards) name.act)
       ?>  (has-paid-access src.bowl brd now.bowl)
-      ?>  (can-read src.bowl brd)
       (apply-vote name.act brd target.act src.bowl %remove)
     ::
         %notify
@@ -1273,13 +1270,19 @@
       ::  truncate inputs to prevent memory abuse
       =/  safe-title=@t  (crip (scag 200 (trip title.act)))
       =/  safe-body=@t  (crip (scag 500 (trip body.act)))
-      =/  =notification  [safe-title safe-body url.act now.bowl %.n]
+      ::  only keep url if it uses a safe http/https scheme (no javascript: etc.)
+      =/  safe-url=(unit @t)
+        ?~  url.act  ~
+        =/  lu=tape  (cass (trip u.url.act))
+        ?:  |(=((scag 7 lu) "http://") =((scag 8 lu) "https://"))  url.act
+        ~
+      =/  =notification  [safe-title safe-body safe-url now.bowl %.n]
       =/  new-notifs=(list ^notification)  [notification (scag 49 notifications)]
       =/  =push-send:push
         :*  targets=(sy our.bowl ~)
             tags=tags.act
             exclude=~
-            msg=[title=title.act body=body.act icon=~ url=url.act tag=~]
+            msg=[title=safe-title body=safe-body icon=~ url=safe-url tag=~]
         ==
       :_  this(notifications new-notifs)
       :~  [%pass /push/remote-notify %agent [our dap]:bowl %poke %push-send !>(push-send)]
@@ -1337,8 +1340,18 @@
     ?>  =(our.bowl registry-ship)
     ?-    -.act
         %register
+      =/  safe-title=@t  (crip (scag 200 (trip title.act)))
+      =/  safe-desc=@t  (crip (scag 2.000 (trip description.act)))
+      =/  existing  (~(get by registry) name.act)
+      ::  a name belongs to its first registrant; another ship can't hijack it
+      ?:  ?&(?=(^ existing) !=(src.bowl host.u.existing))
+        ~&  >>>  [%register-rejected-name-taken name.act src.bowl host.u.existing]
+        `this
+      ::  re-registering your own board updates title/desc, keeps tags/curation
       =/  entry=directory-entry
-        [name.act title.act description.act src.bowl *(set @tas) %.n]
+        ?~  existing
+          [name.act safe-title safe-desc src.bowl *(set @tas) %.n]
+        u.existing(title safe-title, description safe-desc)
       :_  this(registry (~(put by registry) name.act entry))
       :~  [%give %fact ~[/directory] %furum-registry-update !>(`registry-update`[%add entry])]
       ==
@@ -2117,7 +2130,7 @@
       ?:  ?&  =(host our.bowl)
               =/  brd  (~(get by boards) name)
               ?&  ?=(^ brd)
-                  !((check-rate-limit our.bowl name u.brd now.bowl rate-limits))
+                  ?!((check-rate-limit our.bowl name u.brd now.bowl rate-limits))
               ==
           ==
         (send-html eyre-id 429 (render-error:fl "you're posting too fast — please wait a bit and try again" dark))
@@ -2159,7 +2172,7 @@
       ?:  ?&  =(host our.bowl)
               =/  brd  (~(get by boards) name)
               ?&  ?=(^ brd)
-                  !((check-rate-limit our.bowl name u.brd now.bowl rate-limits))
+                  ?!((check-rate-limit our.bowl name u.brd now.bowl rate-limits))
               ==
           ==
         (send-html eyre-id 429 (render-error:fl "you're commenting too fast — please wait a bit and try again" dark))

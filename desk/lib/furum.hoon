@@ -549,14 +549,23 @@
     %'top'  %top
   ==
 ::
-::  check if a URL points to an image
+::  return url only if it uses a safe http/https scheme, else "#"
+::  guards against javascript: and other script-bearing hrefs
+::
+++  safe-href
+  |=  url=@t
+  ^-  tape
+  =/  u=tape  (trip url)
+  =/  lu=tape  (cass u)
+  ?:  |(=((scag 7 lu) "http://") =((scag 8 lu) "https://"))  u
+  "#"
 ::
 ++  is-image-url
   |=  url=@t
   ^-  ?
   =/  u=tape  (cass (trip url))
-  ::  only allow http/https URLs
-  ?.  |(?=(^ (find "http://" u)) ?=(^ (find "https://" u)))
+  ::  only allow http/https URLs (scheme must be a prefix, not anywhere)
+  ?.  |(=((scag 7 u) "http://") =((scag 8 u) "https://"))
     %.n
   =/  exts=(list tape)
     ~[".jpg" ".jpeg" ".png" ".gif" ".webp" ".svg" ".bmp"]
@@ -1045,7 +1054,7 @@
     ^-  manx
     =/  post-href=tape  "{board-path}/{(a-co:co id.post)}"
     =/  title-href=tape
-      ?^  url.post  (trip u.url.post)
+      ?^  url.post  (safe-href u.url.post)
       post-href
     =/  title-link=manx
       ?^  url.post
@@ -1086,7 +1095,7 @@
       ?:((gte up dn) (sub up dn) 0)
     =/  post-href=tape  "{board-path}/{(a-co:co id.post)}"
     =/  title-href=tape
-      ?^  url.post  (trip u.url.post)
+      ?^  url.post  (safe-href u.url.post)
       post-href
     =/  title-link=manx
       ?^  url.post
@@ -1204,7 +1213,7 @@
     ==
   =/  url-link=manx
     ?~  url.post  ;span;
-    ;a(href (trip u.url.post), target "_blank", rel "noopener noreferrer"): {(trip u.url.post)}
+    ;a(href (safe-href u.url.post), target "_blank", rel "noopener noreferrer"): {(trip u.url.post)}
   =/  img-prev=manx
     ?.  ?&(?=(^ url.post) (is-image-url u.url.post))
       ;span;
@@ -2265,7 +2274,7 @@
       ==
     ;div(style "padding: 8px 0; border-bottom: 1px solid #d0ccc4; {read-style}")
       ;strong
-        ;a(href (trip u.url.n)): {(trip title.n)}
+        ;a(href (safe-href u.url.n)): {(trip title.n)}
       ==
       ;p.me: {(trip body.n)}
       ;span.me: {time-text}
