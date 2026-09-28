@@ -7,7 +7,7 @@
 ::
 /-  *furum
 /-  push
-/+  default-agent, dbug, fl=furum, ca=cashu, web-pusher
+/+  default-agent, dbug, fl=furum, fr=furum-rules, ca=cashu, web-pusher
 |%
 +$  old-board-info
   $:  name=board-name
@@ -449,78 +449,22 @@
 |%
 ++  registry-ship  ~ricsul-bilwyt-dozzod-nisfeb
 ::
-++  get-role
-  |=  [who=@p brd=board]
-  ^-  role
-  ?:  =(who host.info.brd)  %mod
-  =/  explicit  (~(get by roles.brd) who)
-  ?~  explicit  default-role.info.brd
-  u.explicit
-::
-++  is-mod
-  |=  [who=@p brd=board]
-  ^-  ?
-  =(%mod (get-role who brd))
-::
-++  can-post
-  |=  [who=@p brd=board]
-  ^-  ?
-  =/  =role  (get-role who brd)
-  ?|  =(role %mod)
-      =(role %poster)
-  ==
-::
-++  can-delete
-  |=  [who=@p author=@p brd=board]
-  ^-  ?
-  ?|  =(who author)
-      (is-mod who brd)
-  ==
-::
-++  has-paid-access
-  |=  [who=@p brd=board now=@da]
-  ^-  ?
-  ?~  payment.brd  %.y
-  ?:  (is-mod who brd)  %.y
-  =/  exp  (~(get by paid.brd) who)
-  ?~  exp  %.n
-  (gth u.exp now)
-::
 ++  give-board-update
   |=  [name=board-name upd=update]
   ^-  card
   [%give %fact ~[/board/[name]] %furum-update !>(upd)]
 ::
-++  rate-limit-base  ~s10
-++  rate-limit-max   ~m10
+::  the pure rules live in lib/furum-rules, where they are tested
 ::
-::  +check-rate-limit: returns %.y if action is allowed
-::
-++  check-rate-limit
-  |=  [who=@p name=board-name brd=board now=@da limits=(map [@p board-name] [last=@da cooldown=@dr])]
-  ^-  ?
-  ?:  (is-mod who brd)  %.y
-  =/  entry  (~(get by limits) [who name])
-  ?~  entry  %.y
-  (gte (sub now last.u.entry) cooldown.u.entry)
-::
-::  +update-rate-limit: record an action timestamp, escalate or decay cooldown
-::
-::  if elapsed >= cooldown*4: reset to base (cooled off)
-::  otherwise: double the cooldown (capped at max)
-::
-++  update-rate-limit
-  |=  [who=@p name=board-name now=@da limits=(map [@p board-name] [last=@da cooldown=@dr])]
-  ^-  (map [@p board-name] [last=@da cooldown=@dr])
-  =/  entry  (~(get by limits) [who name])
-  =/  new-cd=@dr
-    ?~  entry  rate-limit-base
-    =/  elapsed=@dr  (sub now last.u.entry)
-    ?:  (gte elapsed (mul 4 cooldown.u.entry))
-      rate-limit-base
-    (min rate-limit-max (mul 2 cooldown.u.entry))
-  (~(put by limits) [who name] [now new-cd])
-::
+++  get-role           get-role:fr
+++  is-mod             is-mod:fr
+++  can-post           can-post:fr
+++  can-delete         can-delete:fr
+++  has-paid-access    has-paid-access:fr
+++  prune-timer        prune-timer:fr
+++  sane-text          sane-text:fr
+++  check-rate-limit   check-rate-limit:fr
+++  update-rate-limit  update-rate-limit:fr
 --
 ::
 %-  agent:dbug
@@ -714,15 +658,16 @@
     `this(state [%16 registry.old boards.old cache.old subs.old dark-mode.old registry-admins.old my-roles.old followed.old board-seen.old post-seen.old *(map @t pending-swap) *(map @t pending-melt) *(map @t pending-mint-quote) *(map @t pending-ln-invoice) backup-dates.old notifications.old *(map [@p board-name] [last=@da cooldown=@dr])])
   ::
       %16
-    ::  clear stale pending ops and restart prune timers
-    =/  prune-cards=(list card)
-      %+  murn  ~(tap by boards.old)
-      |=  [name=board-name brd=board]
-      ^-  (unit card)
-      ?~  prune.brd  ~
-      `[%pass /prune/[name] %arvo %b %wait (add now.bowl ~h6)]
-    :_  this(state old(pending-swaps *(map @t pending-swap), pending-melts *(map @t pending-melt), pending-mints *(map @t pending-mint-quote), pending-ln-invoices *(map @t pending-ln-invoice)))
-    prune-cards
+    ::  keep pending payment ops: iris responses and behn timers outlive a
+    ::  reload, so clearing them here dropped payments mid-flight.
+    ::  re-arm prune timers, which a suspended agent loses (idempotent).
+    :_  this(state old)
+    %-  zing
+    %+  murn  ~(tap by boards.old)
+    |=  [name=board-name brd=board]
+    ^-  (unit (list card))
+    ?~  prune.brd  ~
+    `(prune-timer name now.bowl)
   ==
 ::
 ++  on-poke
@@ -799,6 +744,9 @@
     ?-    -.act
         %create-board
       ?>  =(src.bowl our.bowl)
+      ?>  (valid-board-name:fl name.act)
+      ::  never replace an existing board and its posts
+      ?<  (~(has by boards) name.act)
       =/  safe-title=@t  (crip (scag 200 (trip title.act)))
       =/  safe-desc=@t  (crip (scag 2.000 (trip description.act)))
       =/  =board-info
@@ -876,6 +824,7 @@
         %set-sidebar
       =/  brd  (~(got by boards) name.act)
       ?>  (is-mod src.bowl brd)
+      ?>  (lte (met 3 sidebar.act) 10.000)
       =/  new-brd  brd(sidebar sidebar.act)
       :_  this(boards (~(put by boards) name.act new-brd))
       :~  (give-board-update name.act [%sidebar-update sidebar.act])
@@ -885,17 +834,17 @@
       ?>  =(src.bowl our.bowl)
       =/  brd  (~(got by boards) name.act)
       =/  new-brd  brd(prune prune.act)
-      ::  start prune timer if enabling (timer self-cancels if prune disabled later)
+      ::  a running timer re-arms itself and stops once prune is disabled
       =/  timer-cards=(list card)
         ?~  prune.act  ~
-        :~  [%pass /prune/[name.act] %arvo %b %wait (add now.bowl ~h6)]
-        ==
+        (prune-timer name.act now.bowl)
       :_  this(boards (~(put by boards) name.act new-brd))
       timer-cards
     ::
         %set-payment
+      ::  host only: the mint decides where subscribers' money goes
+      ?>  =(src.bowl our.bowl)
       =/  brd  (~(got by boards) name.act)
-      ?>  (is-mod src.bowl brd)
       ::  enabling payment disables public access
       =/  new-brd  brd(payment payment.act)
       =?  new-brd  ?=(^ payment.act)
@@ -961,6 +910,11 @@
       ::  clean mint URL
       =/  mint-clean=tape  (clean-mint-url:ca mint.act)
       =/  mint-cord=@t  (crip mint-clean)
+      ::  swap only at a mint we trust; the payer's own mint would vouch
+      ::  for any token it cares to sign
+      ?.  (mint-accepted:fl u.pay mint.act)
+        ~&  >>>  [%submit-payment-mint-not-accepted name.act src.bowl mint-cord]
+        `this
       ::  check if we have cached keys for this keyset
       =/  cached-keys  (~(get by mint-keysets.brd) keyset-id)
       ?~  cached-keys
@@ -1037,13 +991,24 @@
         `this
       =/  mint-clean=tape  (clean-mint-url:ca u.mint-url)
       =/  mint-cord=@t  (crip mint-clean)
-      ::  check for cached keyset
-      =/  keyset-id=@t
-        =/  ks  ~(tap by mint-keysets.u.brd)
-        ?~  ks  ''
-        -.i.ks
-      ::  store pending mint quote
       =/  nonce=@t  nonce.act
+      ?>  (sane-text nonce 128)
+      ::  a nonce names one payer's quote; never let a request replace it
+      ?:  (~(has by pending-mints) nonce)
+        ~&  >>>  [%ln-invoice-nonce-taken name.act src.bowl]
+        `this
+      ::  each invoice costs mint requests and polling: cap live ones per ship
+      =/  live=@ud
+        %-  lent
+        %+  skim  ~(val by pending-mints)
+        |=(p=pending-mint-quote &(=(who.p src.bowl) (gth expiry.p now.bowl)))
+      ?:  (gte live 3)
+        ~&  >>>  [%ln-invoice-too-many name.act src.bowl]
+        `this
+      ::  always look up the mint's active keyset first: a cached one may be
+      ::  another mint's or rotated out, and the mint would then refuse to
+      ::  issue tokens after the payer had already paid the invoice
+      ::  (expiry is a placeholder until the mint quotes one)
       =.  pending-mints
         %+  ~(put by pending-mints)  nonce
         :*  src.bowl
@@ -1052,24 +1017,15 @@
             ''
             ''
             price.u.pay
-            keyset-id
-            *@da
-            ?:(=('' keyset-id) %fetch-keys %quote)
+            ''
+            (add now.bowl ~m10)
+            %fetch-keys
             *(list @t)
             *(list @)
         ==
-      ?:  =('' keyset-id)
-        ::  need to fetch keyset first
-        =/  keys-url=@t  (crip (weld mint-clean "/v1/keysets"))
-        :_  this
-        :~  [%pass /iris/mint-keys/[nonce] %arvo %i %request [%'GET' keys-url ~ ~] *outbound-config:iris]
-        ==
-      ::  have keyset — request mint quote
-      =/  quote-body=@t  (en:json:html (build-mint-quote-request:ca price.u.pay 'sat'))
-      =/  quote-octs=octs  [(met 3 quote-body) quote-body]
-      =/  quote-url=@t  (crip (weld mint-clean "/v1/mint/quote/bolt11"))
+      =/  keys-url=@t  (crip (weld mint-clean "/v1/keysets"))
       :_  this
-      :~  [%pass /iris/mint-quote/[nonce] %arvo %i %request [%'POST' quote-url ~[['content-type' 'application/json']] `quote-octs] *outbound-config:iris]
+      :~  [%pass /iris/mint-keys/[nonce] %arvo %i %request [%'GET' keys-url ~ ~] *outbound-config:iris]
       ==
     ::
         %set-role
@@ -1095,7 +1051,7 @@
       ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-post src.bowl brd)
       ?>  (check-rate-limit src.bowl name.act brd now.bowl rate-limits)
-
+      ?>  (sane-post:fr title.act url.act body.act)
       =/  =post
         :*  id=next-post-id.brd
             author=src.bowl
@@ -1143,6 +1099,7 @@
       ?>  (has-paid-access src.bowl brd now.bowl)
       =/  =post  (~(got by posts.brd) id.act)
       ?>  =(src.bowl author.post)
+      ?>  (sane-post:fr title.act ~ body.act)
       =/  new-pst  post(title title.act, body body.act)
       =/  new-brd  brd(posts (~(put by posts.brd) id.act new-pst))
       :_  this(boards (~(put by boards) name.act new-brd))
@@ -1154,6 +1111,7 @@
       ?>  (has-paid-access src.bowl brd now.bowl)
       ?>  (can-post src.bowl brd)
       ?>  (check-rate-limit src.bowl name.act brd now.bowl rate-limits)
+      ?>  (sane-comment:fr body.act)
       =/  post-comments  (~(gut by comments.brd) post.act *(map comment-id comment))
       =/  next-cid  (~(gut by next-comment-ids.brd) post.act 0)
       =/  =comment
@@ -1270,12 +1228,10 @@
       ::  truncate inputs to prevent memory abuse
       =/  safe-title=@t  (crip (scag 200 (trip title.act)))
       =/  safe-body=@t  (crip (scag 500 (trip body.act)))
-      ::  only keep url if it uses a safe http/https scheme (no javascript: etc.)
+      ::  keep only http(s) or furum-relative links (no javascript: etc.)
       =/  safe-url=(unit @t)
         ?~  url.act  ~
-        =/  lu=tape  (cass (trip u.url.act))
-        ?:  |(=((scag 7 lu) "http://") =((scag 8 lu) "https://"))  url.act
-        ~
+        ?:((safe-url:fl u.url.act) url.act ~)
       =/  =notification  [safe-title safe-body safe-url now.bowl %.n]
       =/  new-notifs=(list ^notification)  [notification (scag 49 notifications)]
       =/  =push-send:push
@@ -1340,6 +1296,7 @@
     ?>  =(our.bowl registry-ship)
     ?-    -.act
         %register
+      ?>  (valid-board-name:fl name.act)
       =/  safe-title=@t  (crip (scag 200 (trip title.act)))
       =/  safe-desc=@t  (crip (scag 2.000 (trip description.act)))
       =/  existing  (~(get by registry) name.act)
@@ -1469,6 +1426,10 @@
     ?:  =('GET' method.request.req)
       (handle-get eyre-id path dark args)
     ?:  =('POST' method.request.req)
+      ::  eyre's session cookie has no SameSite, so a cross-site form post
+      ::  would arrive authenticated; browsers mark those, so refuse them
+      ?:  (cross-site:fr header-list.request.req)
+        (send-html eyre-id 403 (render-error:fl "cross-site request refused" dark))
       (handle-post eyre-id path body.request.req header-list.request.req dark)
     (send-html eyre-id 405 (render-error:fl "method not allowed" dark))
   ::
@@ -2106,20 +2067,23 @@
       [(weld cards redir) this]
     ::  create board: POST /create
         [%create ~]
-      =/  name=@t  (~(gut by form) 'name' '')
+      =/  name=@t  (crip (cass (trip (~(gut by form) 'name' ''))))
       =/  title=@t  (~(gut by form) 'title' '')
       =/  desc=@t  (~(gut by form) 'description' '')
       =/  drole=@t  (~(gut by form) 'default-role' 'poster')
       =/  =role  ?:(=('reader' drole) %reader %poster)
-      =/  act=action  [%create-board (crip (cass (trip name))) title desc role]
+      ?.  (valid-board-name:fl name)
+        (send-html eyre-id 400 (render-error:fl "board names may only use a-z, 0-9 and -" dark))
+      ?:  (~(has by boards) name)
+        (send-html eyre-id 409 (render-error:fl "you already host a board with that name" dark))
+      =/  act=action  [%create-board name title desc role]
       =^  cards1  this  (handle-action act)
       =^  cards2  this
         ::  register with registry
-        =/  bname  (crip (cass (trip name)))
         ?:  =(our.bowl registry-ship)
-          (handle-registry-action [%register bname title desc])
+          (handle-registry-action [%register name title desc])
         :_  this
-        :~  [%pass /register %agent [registry-ship %furum] %poke %furum-registry-action !>(`registry-action`[%register bname title desc])]
+        :~  [%pass /register %agent [registry-ship %furum] %poke %furum-registry-action !>(`registry-action`[%register name title desc])]
         ==
       =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p our.bowl)}/{(trip name)}")
       [(weld cards1 (weld cards2 redir)) this]
@@ -2179,7 +2143,7 @@
       =/  body-val=@t  (~(gut by form) 'body' '')
       =/  parent-val=@t  (~(gut by form) 'parent' '')
       =/  parent=(unit comment-id)
-        ?:(=('' parent-val) ~ (rush parent-val dem:ag))
+        ?:(=('' parent-val) ~ (parse-id:fl parent-val))
       =/  =action  [%new-comment name pid parent body-val]
       =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/{(a-co:co pid)}")
       ?:  =(host our.bowl)
@@ -2347,6 +2311,8 @@
         [%b @ @ %mod %payment ~]
       =/  host=@p  (slav %p i.t.path)
       =/  name=board-name  i.t.t.path
+      ?.  =(host our.bowl)
+        (send-html eyre-id 403 (render-error:fl "can only set payment on local boards" dark))
       =/  enabled=@t  (~(gut by form) 'enabled' 'off')
       =/  price-val=@t  (crip (skip (trip (~(gut by form) 'price' '0')) |=(c=@ =(c '.'))))
       =/  interval-val=@t  (crip (skip (trip (~(gut by form) 'interval' '30')) |=(c=@ =(c '.'))))
@@ -2364,11 +2330,9 @@
         ?.  =('on' enabled)  ~
         `[price (mul ~d1 days) mint-opt]
       =/  =action  [%set-payment name pay]
+      =^  cards  this  (handle-action action)
       =^  redir  this  (redirect eyre-id "/apps/furum/b/{(scow %p host)}/{(trip name)}/mod?saved=payment")
-      ?:  =(host our.bowl)
-        =^  cards  this  (handle-action action)
-        [(weld cards redir) this]
-      [[[%pass /mod-action %agent [host %furum] %poke %furum-action !>(action)] redir] this]
+      [(weld cards redir) this]
     ::  melt to lightning: POST /b/{host}/{name}/mod/melt
         [%b @ @ %mod %melt ~]
       =/  host=@p  (slav %p i.t.path)
@@ -2967,22 +2931,23 @@
         %new-comment
       =/  cb  (~(got by cache) key)
       =/  pc  (~(gut by comments.cb) post.upd *(map comment-id comment))
-      =/  new-pc  (~(put by pc) id.comment.upd comment.upd)
+      =/  new-pc  (merge-comment:fr pc our.bowl comment.upd)
+      ::  count what we hold, so the optimistic +1 isn't counted twice
       =/  pst  (~(get by posts.cb) post.upd)
       =/  new-posts
         ?~  pst  posts.cb
-        (~(put by posts.cb) post.upd u.pst(comment-count +(comment-count.u.pst)))
+        (~(put by posts.cb) post.upd u.pst(comment-count ~(wyt by new-pc)))
       `this(cache (~(put by cache) key cb(comments (~(put by comments.cb) post.upd new-pc), posts new-posts)))
     ::
         %delete-comment
       =/  cb  (~(got by cache) key)
-      =/  pc  (~(gut by comments.cb) post.upd *(map comment-id comment))
+      =/  pc  (~(del by (~(gut by comments.cb) post.upd *(map comment-id comment))) id.upd)
+      ::  count what we hold: an optimistic delete already dropped it
       =/  pst  (~(get by posts.cb) post.upd)
       =/  new-posts
         ?~  pst  posts.cb
-        =/  cnt  comment-count.u.pst
-        (~(put by posts.cb) post.upd u.pst(comment-count ?:(=(0 cnt) 0 (dec cnt))))
-      `this(cache (~(put by cache) key cb(comments (~(put by comments.cb) post.upd (~(del by pc) id.upd)), posts new-posts)))
+        (~(put by posts.cb) post.upd u.pst(comment-count ~(wyt by pc)))
+      `this(cache (~(put by cache) key cb(comments (~(put by comments.cb) post.upd pc), posts new-posts)))
     ::
         %vote-update
       =/  cb  (~(got by cache) key)
@@ -3062,21 +3027,7 @@
     =/  brd  (~(get by boards) name)
     ?~  brd  `this
     ?~  prune.u.brd  `this
-    =/  min-score=@ud  min-score.u.prune.u.brd
-    =/  after=@dr  after.u.prune.u.brd
-    =/  cutoff=@da  (sub now.bowl after)
-    ::  find posts to prune: older than cutoff, below min score, not pinned
-    =/  to-prune=(list post-id)
-      %+  murn  ~(tap by posts.u.brd)
-      |=  [id=post-id =post]
-      ^-  (unit post-id)
-      ?:  (~(has in pinned.u.brd) id)  ~
-      ?:  (gth created.post cutoff)  ~
-      =/  up=@ud  ~(wyt in up-votes.post)
-      =/  dn=@ud  ~(wyt in down-votes.post)
-      =/  score=@ud  ?:((gte up dn) (sub up dn) 0)
-      ?:  (gte score min-score)  ~
-      `id
+    =/  to-prune=(list post-id)  (prunable:fr u.brd u.prune.u.brd now.bowl)
     ::  prune posts and their comments — build delete cards
     =/  prune-cards=(list card)
       (turn to-prune |=(pid=post-id (give-board-update name [%delete-post pid])))
@@ -3092,7 +3043,7 @@
     ~&  >>>  [%prune-cycle name (lent to-prune)]
     ::  schedule next prune cycle
     :_  this(boards (~(put by boards) name pruned-brd))
-    [[%pass /prune/[name] %arvo %b %wait (add now.bowl ~h6)] prune-cards]
+    (weld (prune-timer name now.bowl) prune-cards)
   ::
       [%iris %swap @ ~]
     =/  nonce=@t  i.t.t.wire
@@ -3136,35 +3087,13 @@
         ~&  >>>  [%ecash-swap-board-gone name.u.pending]
         =.  pending-swaps  (~(del by pending-swaps) nonce)
         `this
-      ::  parse keyset response: {keysets: [{id, unit, keys: {amount: hex_pubkey}}]}
-      ?.  ?=([%o *] jon)
-        ~&  >>>  [%ecash-swap-bad-keyset name.u.pending]
-        =.  pending-swaps  (~(del by pending-swaps) nonce)
-        `this
-      =/  keys-val=(unit json)
-        =/  ks  (~(get by p.jon) 'keysets')
-        ?~  ks  (~(get by p.jon) 'keys')
-        ?.  ?=([%a *] u.ks)  (~(get by p.jon) 'keys')
-        =/  first  (snag 0 p.u.ks)
-        ?.  ?=([%o *] first)  (~(get by p.jon) 'keys')
-        (~(get by p.first) 'keys')
-      ?~  keys-val
+      ::  store keys as amt -> hex_pubkey in mint-keysets
+      =/  key-map  (parse-keys:ca jon)
+      ?~  key-map
         ~&  >>>  [%ecash-swap-no-keys name.u.pending]
         =.  pending-swaps  (~(del by pending-swaps) nonce)
         `this
-      ?.  ?=([%o *] u.keys-val)
-        ~&  >>>  [%ecash-swap-bad-keys-format name.u.pending]
-        =.  pending-swaps  (~(del by pending-swaps) nonce)
-        `this
-      ::  store keys as amt -> hex_pubkey in mint-keysets
-      =/  key-map=(map @ud @t)
-        %-  ~(rep by p.u.keys-val)
-        |=  [[amt-key=@t hex-val=json] acc=(map @ud @t)]
-        ?.  ?=([%s *] hex-val)  acc
-        =/  amt=@ud  (roll (trip amt-key) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
-        ?:  =(0 amt)  acc
-        (~(put by acc) amt p.hex-val)
-      =/  new-brd  u.brd(mint-keysets (~(put by mint-keysets.u.brd) keyset-id.u.pending key-map))
+      =/  new-brd  u.brd(mint-keysets (~(put by mint-keysets.u.brd) keyset-id.u.pending u.key-map))
       =.  boards  (~(put by boards) name.u.pending new-brd)
       =.  pending-swaps  (~(del by pending-swaps) nonce)
       ::  now do the actual swap with cached keys
@@ -3497,36 +3426,16 @@
       =.  pending-mints  (~(del by pending-mints) nonce)
       `this
     ::  parse keys and cache them
-    =/  jon  u.resp-json
-    ?.  ?=([%o *] jon)
-      =.  pending-mints  (~(del by pending-mints) nonce)
-      `this
-    =/  keys-val=(unit json)
-      =/  ks  (~(get by p.jon) 'keysets')
-      ?~  ks  (~(get by p.jon) 'keys')
-      ?.  ?=([%a *] u.ks)  (~(get by p.jon) 'keys')
-      =/  first  (snag 0 p.u.ks)
-      ?.  ?=([%o *] first)  (~(get by p.jon) 'keys')
-      (~(get by p.first) 'keys')
-    ?~  keys-val
+    =/  key-map  (parse-keys:ca u.resp-json)
+    ?~  key-map
       ~&  >>>  [%ln-mint-keyset-no-keys name.u.pending]
       =.  pending-mints  (~(del by pending-mints) nonce)
       `this
-    ?.  ?=([%o *] u.keys-val)
-      =.  pending-mints  (~(del by pending-mints) nonce)
-      `this
-    =/  key-map=(map @ud @t)
-      %-  ~(rep by p.u.keys-val)
-      |=  [[amt-key=@t hex-val=json] acc=(map @ud @t)]
-      ?.  ?=([%s *] hex-val)  acc
-      =/  amt=@ud  (roll (trip amt-key) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
-      ?:  =(0 amt)  acc
-      (~(put by acc) amt p.hex-val)
     =/  brd  (~(get by boards) name.u.pending)
     ?~  brd
       =.  pending-mints  (~(del by pending-mints) nonce)
       `this
-    =/  new-brd  u.brd(mint-keysets (~(put by mint-keysets.u.brd) keyset-id.u.pending key-map))
+    =/  new-brd  u.brd(mint-keysets (~(put by mint-keysets.u.brd) keyset-id.u.pending u.key-map))
     =.  boards  (~(put by boards) name.u.pending new-brd)
     ::  now request mint quote
     =/  quote-body=@t  (en:json:html (build-mint-quote-request:ca amount.u.pending 'sat'))
@@ -3570,8 +3479,12 @@
       ~&  >>>  [%ln-mint-quote-bad-format name.u.pending]
       =.  pending-mints  (~(del by pending-mints) nonce)
       `this
-    ::  convert unix expiry to @da (unix epoch = ~1970.1.1)
-    =/  expiry-da=@da  (add ~1970.1.1 (mul expiry.u.quote-result (bex 64)))
+    ::  convert unix expiry to @da (unix epoch = ~1970.1.1). a mint may
+    ::  send null (parsed as 0), meaning no expiry: poll for an hour rather
+    ::  than dropping the quote on the first check
+    =/  expiry-da=@da
+      ?:  =(0 expiry.u.quote-result)  (add now.bowl ~h1)
+      (add ~1970.1.1 (mul expiry.u.quote-result (bex 64)))
     ::  update pending state
     =.  pending-mints
       %+  ~(put by pending-mints)  nonce
@@ -3613,6 +3526,11 @@
       =.  pending-mints  (~(del by pending-mints) nonce)
       `this
     =/  =client-response:iris  client-response.sign-arvo
+    ::  a dropped connection must not end polling: the invoice may be paid
+    ?:  ?=([%cancel *] client-response)
+      :_  this
+      :~  [%pass /timer/mint/[nonce] %arvo %b %wait (add now.bowl ~s5)]
+      ==
     ?.  ?=([%finished *] client-response)  `this
     =/  response=response-header:http  response-header.client-response
     =/  body=(unit octs)  ?~(full-file.client-response ~ `data.u.full-file.client-response)
@@ -3690,7 +3608,8 @@
       =/  err-body=@t
         ?~  body  'no body'
         (crip (scag 500 (trip q.u.body)))
-      ~&  >>>  [%ln-mint-exec-rejected name.u.pending status-code.response err-body]
+      ::  the invoice is paid: log what's needed to mint it by hand
+      ~&  >>>  [%ln-mint-exec-rejected name.u.pending who.u.pending mint.u.pending quote-id.u.pending status-code.response err-body]
       =.  pending-mints  (~(del by pending-mints) nonce)
       `this
     ?~  body

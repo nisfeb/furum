@@ -1,8 +1,9 @@
 ::  lib/furum.hoon: rendering and parsing helpers for %furum
 ::
 /-  *furum
+/+  ca=cashu
 |%
-++  version  '0.5.1'
+++  version  '0.5.2'
 ::
 ::  favicon SVG: digamma (Ϝ) on red background
 ::
@@ -454,17 +455,6 @@
     "{(a-co:co m.parts)}m ago"
   "{(a-co:co s.parts)}s ago"
 ::
-::  net votes for a post
-::
-++  net-votes
-  |=  =post
-  ^-  @sd
-  =/  up=@ud  ~(wyt in up-votes.post)
-  =/  dn=@ud  ~(wyt in down-votes.post)
-  ?:  (gte up dn)
-    (sun:si (sub up dn))
-  (new:si %.n (sub dn up))
-::
 ::  sort posts by creation time (newest first)
 ::
 ++  sort-posts-by-new
@@ -549,16 +539,38 @@
     %'top'  %top
   ==
 ::
-::  return url only if it uses a safe http/https scheme, else "#"
+::  a url is safe to link if it is http(s) or a same-origin furum path;
 ::  guards against javascript: and other script-bearing hrefs
+::
+++  safe-url
+  |=  url=@t
+  ^-  ?
+  =/  lu=tape  (cass (trip url))
+  ?|  =((scag 7 lu) "http://")
+      =((scag 8 lu) "https://")
+      =((scag 12 lu) "/apps/furum/")
+  ==
 ::
 ++  safe-href
   |=  url=@t
   ^-  tape
-  =/  u=tape  (trip url)
-  =/  lu=tape  (cass u)
-  ?:  |(=((scag 7 lu) "http://") =((scag 8 lu) "https://"))  u
-  "#"
+  ?:((safe-url url) (trip url) "#")
+::
+::  +valid-board-name: [a-z0-9-]+, the url-safe names the create form allows
+::
+++  valid-board-name
+  |=  name=@t
+  ^-  ?
+  =/  n=tape  (trip name)
+  ?&  !=(~ n)
+      (lte (lent n) 64)
+      %+  levy  n
+      |=  c=@tD
+      ?|  &((gte c 'a') (lte c 'z'))
+          &((gte c '0') (lte c '9'))
+          =(c '-')
+      ==
+  ==
 ::
 ++  is-image-url
   |=  url=@t
@@ -852,7 +864,7 @@
       "/apps/furum/b/{(scow %p host.item)}/{(trip board-name.item)}"
     =/  post-href=tape  "{board-path}/{(a-co:co id.post.item)}"
     =/  title-href=tape
-      ?^  url.post.item  (trip u.url.post.item)
+      ?^  url.post.item  (safe-href u.url.post.item)
       post-href
     =/  title-link=manx
       ?^  url.post.item
@@ -1526,7 +1538,7 @@
         ;div
           ;label: name (url-safe, lowercase, no spaces)
           ;br;
-          ;input(type "text", name "name", required "", pattern "[a-z0-9-]+");
+          ;input(type "text", name "name", required "", pattern "[a-z0-9-]+", maxlength "64");
         ==
         ;br;
         ;div
@@ -1567,6 +1579,23 @@
       ['https://mint.cubabitcoin.org' 'Cuba Bitcoin']
   ==
 ::
+::  +accepted-mints: the mints a paid board takes ecash from, as [url label].
+::  the board's own mint if set, else the known public mints. a token from
+::  any other mint is refused: a self-run mint can sign worthless tokens.
+::
+++  accepted-mints
+  |=  pay=payment-config
+  ^-  (list [@t @t])
+  ?~  mint.pay  known-mints
+  =/  url=@t  (crip (clean-mint-url:ca u.mint.pay))
+  ~[[url url]]
+::
+++  mint-accepted
+  |=  [pay=payment-config mint=@t]
+  ^-  ?
+  =/  url=@t  (crip (clean-mint-url:ca mint))
+  (lien (accepted-mints pay) |=([u=@t *] =(u url)))
+::
 ++  render-paywall
   |=  [host=@p =board-info pay=payment-config expired=(unit @da) dark=? pending=?]
   ^-  manx
@@ -1591,7 +1620,7 @@
       ;p.paywall-status: This board requires payment to access.
     ;p.paywall-status: Your access has expired. Pay to renew.
   =/  mint-options=marl
-    %+  turn  known-mints
+    %+  turn  (accepted-mints pay)
     |=  [url=@t label=@t]
     ;option(value (trip url)): {(trip label)}
   =/  token-js=cord
@@ -1601,11 +1630,10 @@
       function decodeCBOR(buf){var d=new DataView(buf),p=0;function r(){var b=d.getUint8(p++),m=b>>5,a=b&31,v=a;if(a===24)v=d.getUint8(p++);else if(a===25){v=d.getUint16(p);p+=2;}else if(a===26){v=d.getUint32(p);p+=4;}if(m===0)return v;if(m===2){var u=new Uint8Array(buf,p,v);p+=v;return Array.from(u).map(function(x){return('0'+x.toString(16)).slice(-2)}).join('');}if(m===3){var t=new TextDecoder().decode(new Uint8Array(buf,p,v));p+=v;return t;}if(m===4){var ar=[];for(var i=0;i<v;i++)ar.push(r());return ar;}if(m===5){var o={};for(var i=0;i<v;i++){var k=r();o[k]=r();}return o;}return v;}return r();}
       var ta=document.getElementById('token-input');
       var mf=document.getElementById('mint-select');
-      var cf=document.getElementById('mint-custom');
       var sf=document.getElementById('token-summary');
       var hid=document.getElementById('tokens-hidden');
       var hm=document.getElementById('mint-hidden');
-      if(mf.options.length>0&&mf.value!=='custom')hm.value=mf.value;
+      hm.value=mf.value;
       ta.addEventListener('input',function(){
         var v=ta.value.trim();
         try{
@@ -1636,19 +1664,14 @@
           sf.textContent=total>0?'Total: '+total+' sats ('+proofs.length+' proofs)':'';
           hid.value=JSON.stringify({inputs:proofs});
           if(mint){
-            cf.value=mint;
-            mf.value='custom';
+            mint=mint.replace(/\/+$/,'');
+            mf.value=mint;
             hm.value=mint;
+            if(mf.value!==mint)sf.textContent='This board does not accept tokens from '+mint;
           }
         }catch(e){sf.textContent='Could not parse token';hid.value='';}
       });
-      mf.addEventListener('change',function(){
-        if(mf.value==='custom'){hm.value=cf.value;}
-        else{hm.value=mf.value;cf.value='';}
-      });
-      cf.addEventListener('input',function(){
-        mf.value='custom';hm.value=cf.value;
-      });
+      mf.addEventListener('change',function(){hm.value=mf.value;});
     })();
     '''
   =/  qr-scan-js=cord
@@ -1854,14 +1877,7 @@
           ;br;
           ;select(name "mint-select", id "mint-select")
             ;*  mint-options
-            ;option(value "custom"): Custom mint URL...
           ==
-        ==
-        ;br;
-        ;div
-          ;label: Custom Mint URL
-          ;br;
-          ;input(type "text", name "mint-custom", id "mint-custom", placeholder "https://mint.example.com");
         ==
         ;br;
         ;div
@@ -2120,7 +2136,7 @@
         ==
         ;br;
         ;div
-          ;label: Mint URL (enables Lightning payments)
+          ;label: Mint URL (enables Lightning; ecash is then only accepted from this mint, otherwise from the known public mints)
           ;br;
           ;input(type "text", name "mint-url", value pay-mint, placeholder "https://mint.example.com", style "width: 400px");
         ==
@@ -2586,116 +2602,6 @@
   %-  page-shell
   :*  'furum - admin'  admin-content  ~  %.n  dark  ==
 ::
-::  REGISTRY ADMIN PAGE
-++  render-registry-admin
-  |=  [entries=(list directory-entry) admins=(set @p) is-host=? dark=?]
-  ^-  manx
-  =/  board-rows=marl
-    ?~  entries
-      :~  ;p.me: No boards registered.
-      ==
-    %+  turn  entries
-    |=  entry=directory-entry
-    ^-  manx
-    =/  tag-text=tape
-      %+  roll  ~(tap in tags.entry)
-      |=  [tag=@tas acc=tape]
-      ?:(=(acc "") (trip tag) "{acc}, {(trip tag)}")
-    =/  name-text=tape  (trip name.entry)
-    ;div.rw
-      ;div(style "width: 100%")
-        ;span.ti: {(trip title.entry)}
-        ;span.host: {" "}({(scow %p host.entry)})
-        ;span.me: {" "}curated: {?:(curated.entry "yes" "no")} | tags: {?:(=(tag-text "") "none" tag-text)}
-        ;div(style "margin-top: 4px")
-          ;form(method "post", action "/apps/furum/registry/curate", style "display:inline")
-            ;input(type "hidden", name "name", value name-text);
-            ;input(type "hidden", name "curated", value ?:(curated.entry "false" "true"));
-            ;input.btn(type "submit", value ?:(curated.entry "uncurate" "curate"));
-          ==
-          ;form(method "post", action "/apps/furum/registry/tag", style "display:inline; margin-left: 8px")
-            ;input(type "hidden", name "name", value name-text);
-            ;input(type "text", name "tag", placeholder "add tag", style "width: 100px");
-            ;input.btn(type "submit", value "tag");
-          ==
-          ;+  ?.  (gth ~(wyt in tags.entry) 0)
-                ;span;
-              ;span(style "margin-left: 8px")
-                ;*
-                %+  turn  ~(tap in tags.entry)
-                |=  tag=@tas
-                ^-  manx
-                ;form(method "post", action "/apps/furum/registry/untag", style "display:inline; margin-left: 4px")
-                  ;input(type "hidden", name "name", value name-text);
-                  ;input(type "hidden", name "tag", value (trip tag));
-                  ;input.btn(type "submit", value "x {(trip tag)}");
-                ==
-              ==
-        ==
-      ==
-    ==
-  =/  admin-list=(list @p)  ~(tap in admins)
-  =/  admin-rows=marl
-    %+  turn  admin-list
-    |=  who=@p
-    ^-  manx
-    ;tr
-      ;td: {(scow %p who)}
-      ;td
-        ;+  ?.  is-host
-              ;span;
-            ;form(method "post", action "/apps/furum/registry/remove-admin", style "display:inline")
-              ;input(type "hidden", name "who", value "{(scow %p who)}");
-              ;input.btn(type "submit", value "remove");
-            ==
-      ==
-    ==
-  =/  admin-table=manx
-    ?.  (gth (lent admin-list) 0)
-      ;p.me: No delegates added yet.
-    ;table.mod
-      ;thead
-        ;tr
-          ;th: Delegate
-          ;th: Action
-        ==
-      ==
-      ;tbody
-        ;*  admin-rows
-      ==
-    ==
-  =/  add-form=manx
-    ?.  is-host
-      ;p.me: Only the registry host can add or remove delegates.
-    ;form(method "post", action "/apps/furum/registry/add-admin")
-      ;div
-        ;label: computer (@p)
-        ;br;
-        ;input(type "text", name "who", required "", placeholder "~sampel-palnet");
-      ==
-      ;br;
-      ;input.btn(type "submit", value "add delegate");
-    ==
-  =/  admin-section=marl
-    :~
-      ;h4: Delegate Admins
-      ;p.me: These computers can curate and tag boards.
-      add-form
-      admin-table
-      ;hr;
-    ==
-  =/  header=marl
-    :~
-      ;h3: Registry Admin
-      ;p.me: Manage board curation and tags.
-      ;p
-        ;a(href "/apps/furum"): back to directory
-      ==
-      ;hr;
-    ==
-  %-  page-shell
-  :*  'furum - registry admin'  :(welp header admin-section board-rows)  ~  %.n  dark  ==
-::
 ::  ERROR PAGE
 ::
 ++  render-error
@@ -2706,7 +2612,9 @@
     :~  ;div.err
           ;h3: Error
           ;p: {msg}
-          ;p: ;a/"/apps/furum": back to home
+          ;p
+            ;a/"/apps/furum": back to home
+          ==
         ==
     ==
     ~
@@ -3027,13 +2935,6 @@
     %reader  'reader'
   ==
 ::
-::  helper: add rank numbers to a list
-::
-++  rank-list
-  |=  posts=(list post)
-  ^-  (list [@ud post])
-  (rank-list-offset posts 0)
-::
 ++  rank-list-offset
   |=  [posts=(list post) offset=@ud]
   ^-  (list [@ud post])
@@ -3041,6 +2942,14 @@
   |-
   ?~  posts  ~
   [[idx i.posts] $(posts t.posts, idx +(idx))]
+::
+::  +parse-id: a post or comment id from a form, in plain digits.
+::  dem:ag would refuse anything past 999 unless written "1.000".
+::
+++  parse-id
+  |=  t=@t
+  ^-  (unit @ud)
+  (rush t dum:ag)
 ::
 ::  helper: parse vote target from form value
 ::  format: "post-{id}" or "comment-{post-id}-{comment-id}"
@@ -3050,7 +2959,7 @@
   ^-  (unit vote-target)
   =/  t=tape  (trip val)
   ?:  =("post-" (scag 5 t))
-    =/  id  (rush (crip (slag 5 t)) dem:ag)
+    =/  id  (parse-id (crip (slag 5 t)))
     ?~  id  ~
     `[%post u.id]
   ?:  =("comment-" (scag 8 t))
@@ -3058,8 +2967,8 @@
     =/  parts=(list tape)  (split-on rest '-')
     ?~  parts  ~
     ?~  t.parts  ~
-    =/  post-id  (rush (crip i.parts) dem:ag)
-    =/  cmt-id  (rush (crip i.t.parts) dem:ag)
+    =/  post-id  (parse-id (crip i.parts))
+    =/  cmt-id  (parse-id (crip i.t.parts))
     ?~  post-id  ~
     ?~  cmt-id  ~
     `[%comment u.post-id u.cmt-id]

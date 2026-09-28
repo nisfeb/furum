@@ -377,22 +377,25 @@
 ::
 ::  -- Keyset parsing --
 ::
-::  Parse mint keyset response: {keys: {amount_str: hex_pubkey, ...}}
-++  parse-keyset
+::  Parse a /v1/keys response, {keysets: [{keys: ...}]} or a bare
+::  {keys: ...}, as amount -> hex pubkey. ~ when it holds no keys.
+++  parse-keys
   |=  jon=json
-  ^-  (map @ud [x=@ y=@])
-  ?.  ?=([%o *] jon)  *(map @ud [x=@ y=@])
-  =/  keys-val  (~(get by p.jon) 'keys')
-  ?~  keys-val  *(map @ud [x=@ y=@])
-  ?.  ?=([%o *] u.keys-val)  *(map @ud [x=@ y=@])
-  %-  ~(rep by p.u.keys-val)
-  |=  [[amt-key=@t hex-val=json] acc=(map @ud [x=@ y=@])]
-  ?.  ?=([%s *] hex-val)  acc
-  =/  amt=@ud  (roll (trip amt-key) |=([c=@ a=@ud] (add (mul a 10) (sub c '0'))))
-  ?:  =(0 amt)  acc
-  =/  pt-result  (mule |.((hex-to-point p.hex-val)))
-  ?.  ?=([%& *] pt-result)  acc
-  (~(put by acc) amt p.pt-result)
+  ^-  (unit (map @ud @t))
+  ?.  ?=([%o *] jon)  ~
+  =/  keys=(unit json)
+    =/  ks  (~(get by p.jon) 'keysets')
+    ?.  ?=([~ %a ^] ks)  (~(get by p.jon) 'keys')
+    ?.  ?=([%o *] i.p.u.ks)  (~(get by p.jon) 'keys')
+    (~(get by p.i.p.u.ks) 'keys')
+  ?.  ?=([~ %o *] keys)  ~
+  :-  ~
+  %-  ~(rep by p.u.keys)
+  |=  [[k=@t v=json] acc=(map @ud @t)]
+  =/  amt  (rush k dum:ag)
+  ?.  &(?=(^ amt) ?=([%s *] v))  acc
+  ?:  =(0 u.amt)  acc
+  (~(put by acc) u.amt p.v)
 ::
 ::  -- Amount splitting --
 ::
