@@ -16,7 +16,7 @@ A decentralized forum for Urbit, inspired by Reddit and Hacker News. Server-rend
 
 Every ship with `%furum` installed runs one Gall agent that can act in three modes:
 
-1. **Registry** — maintains a directory of all boards (hardcoded to `~zod` for dev)
+1. **Registry** — maintains a directory of all boards (hardcoded; see Configuration)
 2. **Host** — stores boards, posts, comments, votes, and permissions; serves data to subscribers
 3. **Client** — subscribes to the registry and host ships, caches data locally, serves the web UI
 
@@ -92,24 +92,37 @@ furum/
   desk/                         <- distributable desk
     app/furum.hoon              <- main Gall agent
     lib/furum.hoon              <- rendering, scoring, parsing helpers
+    lib/furum-rules.hoon        <- the agent's pure decisions (access, limits, pruning)
+    lib/cashu.hoon              <- ecash (Cashu) protocol
     sur/furum.hoon              <- type definitions
     mar/furum/                  <- mark files (action, update, registry-*)
     desk.bill                   <- agent manifest
     desk.docket-0               <- app metadata
-    sys.kelvin                  <- kelvin version
+    sys.kelvin                  <- kelvins it runs on (zuse 409 and 408)
+  tests/lib/                    <- Hoon unit suites for the libs
+  hoon-test.conf                <- what the suites build (hoon-test-kit)
+  scripts/hoon-test-kit/        <- vendored test runner
+  docs/hoon-testing.md          <- how to run the suites, and what they found
   PLAN.md                       <- architecture and design notes
   icon.jpg                      <- source icon image
 ```
+
+## Testing
+
+The libraries' unit suites run on a fake ship, never a real one, through
+the vendored [hoon-test-kit](scripts/hoon-test-kit/README.md).
+[docs/hoon-testing.md](docs/hoon-testing.md) covers setup, running, what
+the suites protect, and how every surviving mutant was triaged.
 
 ## Configuration
 
 The registry ship is set as a constant in `app/furum.hoon`:
 
 ```hoon
-++  registry-ship  ~zod
+++  registry-ship  ~ricsul-bilwyt-dozzod-nisfeb
 ```
 
-Change this to your registry ship's `@p` before deploying to a real network.
+Change this to your own registry ship's `@p` to run a separate network.
 
 ## License
 
