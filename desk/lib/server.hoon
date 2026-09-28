@@ -23,23 +23,39 @@
 ::
 ++  app
   |%
+  ::
+  ::  +require-authorization:
+  ::      redirect to the login page when unauthenticated
+  ::      otherwise call handler on inbound request
+  ::
   ++  require-authorization
     |=  $:  =inbound-request:eyre
             handler=$-(inbound-request:eyre simple-payload:http)
         ==
     ^-  simple-payload:http
+    ::
     ?:  authenticated.inbound-request
+      ~!  this
+      ~!  +:*handler
       (handler inbound-request)
+    ::
     =-  [[307 ['location' -]~] ~]
     %^  cat  3
       '/~/login?redirect='
     url.request.inbound-request
   ::
+  ::  +require-authorization-simple:
+  ::      redirect to the login page when unauthenticated
+  ::      otherwise pass through simple-paylod
+  ::
   ++  require-authorization-simple
     |=  [=inbound-request:eyre =simple-payload:http]
     ^-  simple-payload:http
+    ::
     ?:  authenticated.inbound-request
+      ~!  this
       simple-payload
+    ::
     =-  [[307 ['location' -]~] ~]
     %^  cat  3
       '/~/login?redirect='
@@ -84,6 +100,31 @@
     :_  `octs
     [200 [['content-type' 'text/javascript'] ?:(cache [max-1-wk ~] ~)]]
   ::
+  ++  png-response
+    =|  cache=?
+    |=  =octs
+    ^-  simple-payload:http
+    :_  `octs
+    [200 [['content-type' 'image/png'] ?:(cache [max-1-wk ~] ~)]]
+  ::
+  ++  svg-response
+    =|  cache=?
+    |=  =octs
+    ^-  simple-payload:http
+    :_  `octs
+    [200 [['content-type' 'image/svg+xml'] ?:(cache [max-1-wk ~] ~)]]
+  ::
+  ++  ico-response
+    |=  =octs
+    ^-  simple-payload:http
+    [[200 [['content-type' 'image/x-icon'] max-1-wk ~]] `octs]
+  ::
+  ++  woff2-response
+    =|  cache=?
+    |=  =octs
+    ^-  simple-payload:http
+    [[200 [['content-type' 'font/woff2'] max-1-wk ~]] `octs]
+  ::
   ++  json-response
     =|  cache=_|
     |=  =json
@@ -91,9 +132,24 @@
     :_  `(json-to-octs json)
     [200 [['content-type' 'application/json'] ?:(cache [max-1-da ~] ~)]]
   ::
+  ++  manx-response
+    =|  cache=_|
+    |=  man=manx
+    ^-  simple-payload:http
+    :_  `(manx-to-octs man)
+    [200 [['content-type' 'text/html'] ?:(cache [max-1-da ~] ~)]]
+  ::
   ++  not-found
     ^-  simple-payload:http
     [[404 ~] ~]
+  ::
+  ++  login-redirect
+    |=  =request:http
+    ^-  simple-payload:http
+    =-  [[307 ['location' -]~] ~]
+    %^  cat  3
+      '/~/login?redirect='
+    url.request
   ::
   ++  redirect
     |=  redirect=cord
