@@ -149,10 +149,59 @@ both arms killed all 26 mutants that build. What survives:
   (the kit's finder splits it), and `+render-feed` without the `?=` that
   narrows the url.
 
+## The nexus (`code/`)
+
+The grubbery nexus has its own conf, `hoon-test-nexus.conf`
+(`DIALECT=grubbery`), and its own test desk, `%furum-nexus-test`. It needs
+a fake ship with `%grubbery` installed, since `SHIP_FILES` copies the kernel
+libs the nexus builds against (tarball, nexus, loader, server, fiberio and
+their imports) from that desk at the version the ship runs. Once per ship,
+in its dojo, `|new-desk %furum-nexus-test` and `|mount %furum-nexus-test`,
+then:
+
+```sh
+HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier> setup
+HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
+```
+
+`tests/nexus/furum.hoon` holds eight tests. They drive the fibers through
+`+on-file` with the kit's `fiber-test`:
+
+| test | protects |
+|---|---|
+| `test-writer-grants-the-inbox` | the writer registers itself and grants `/public` poke on `inbox.sig` only: a grant naming `main.sig` would let any ship write the boards |
+| `test-refusing-weir-parks` | rule 8: with the clock refused, a crashed writer parks after one dart. A poke is refused with the note, and the restart it brings parks again without writing `rise.json`. Jailed, a clean start asks the registry nothing |
+| `test-crash-waits-then-rises` | a crash waits a minute, recorded in `rise.json` with a timer set. The `/rise` wake brings the writer back; another timer's wake doesn't |
+| `test-restart-under-writes` | rule 9: an op queued before the start's kick is held, then applied |
+| `test-writer-refuses` | a ship's poke, a malformed op and a wrong mark go to `/tr/last`, never a crash; a good op lands on `/tr/inbox` |
+| `test-inbox-forwards` | the inbox forwards another ship's poke with the sender the transport names, and ignores a local one |
+| `test-owner-gate` | only the authenticated owner gets the page. A guest, or another ship eyre authenticated, gets 403. Only GET of the root is a page |
+| `test-rise-plan` | the backoff: 1, 2, 4 minutes to an hour, reset after two quiet hours |
+
+### Mutation run (2026-09-28, all ops)
+
+On the nexus and `code/lib/furum-rules.hoon`, in slices with `--only`,
+since a full run stopped ~wes after about 25 rebuilds. `test-crash-waits`
+first left `+rise-park`'s wire check alive: nothing showed the park ending
+on its own wake, and a fiber that never did would stay down for good. It
+became `test-crash-waits-then-rises`, and every `+rise-park` mutant now
+dies. What survives:
+
+- **log text only**: six `+rise-later` mutants on which trace prints
+  (the first two crashes in full, "no clock", "no timer"). A test can't see
+  a slog.
+- **equivalent**, `+rise-later` `gth->gte` on the wait: at until = now to
+  the millisecond, the timer fires at once either way.
+- **equivalent**, `+ms-of` `lth->lte`: at the epoch itself both give 0.
+- **unreachable**, `+soft-now`'s ack-first branch (two mutants): grubbery
+  sends a bowl read's answer before its ack.
+- **unreachable**, `+soft-behn`'s wire check: the fiber has one dart in
+  flight when it waits, so no other pack arrives.
+
 ## Not covered
 
 - **The agent**: on-load migrations, HTTP routing, the iris payment state
-  machines, subscriptions. The kit can't build an agent. Those were
+  machines, subscriptions. The kit can't build a Gall agent. Those were
   exercised by hand across two fake ships on 2026-09-28.
 - **The cap on live Lightning invoices** (3 per ship) is still inline in the
   agent, because its type lives there.
@@ -208,3 +257,9 @@ was working in the kit repo at the time.
   back into the lib on the test desk (`NOSYNC=1`) proves the regression
   test fails for its reason, as the test-audit rule asks. Here all six were
   caught, and the feed case failed on exactly the feed entry.
+- **A long grubbery-dialect run can stop the ship.** Each mutant rebuilds
+  the nexus against fiberio, and ~wes stopped after about 25 of them. The
+  runner said so and voided the rest. The kit had restored the clean file
+  to the mount but not committed it, so the next plain run still tested
+  the mutant: `NOSYNC=1 hoon-test.sh` commits the mount as it stands. Run
+  such suites in slices with `--only`.

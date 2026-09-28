@@ -67,7 +67,7 @@ code/
   lib/furum-rules.hoon  lib/furum.hoon  lib/cashu.hoon  lib/furum-web.hoon (request decoders)
   mar/furum/…                               every marc the blots use, noun passthroughs
   mar/{json,mime,sig,ships,time,timer-wake,bowl-req,http-request,…}   vendored ("guests distribute every marc they use")
-tests/lib/…   hoon-test.conf (DIALECT=grubbery)   scripts/{code-closure.py,weir-check.py,api-matrix,xship}
+tests/nexus/…   hoon-test-nexus.conf (DIALECT=grubbery)   scripts/{code-closure.py,weir-check.py,dev-deploy.py,api-matrix,xship}
 ```
 
 - The libs lose their `/-` and `/+` runes. Ball code imports with `/<`, and
@@ -88,7 +88,7 @@ tests/lib/…   hoon-test.conf (DIALECT=grubbery)   scripts/{code-closure.py,wei
   main.sig                   THE WRITER: every mutation, in order
   inbox.sig                  public poke road: remote posts, comments, votes, mod actions, joins
   notify.sig                 public poke road: notifications from hosts about our posts
-  ui/main.sig  ui/requests/<eyre-id>              bind /apps/furum, one fiber per request
+  web.sig  requests/<eyre-id>                     bind /apps/furum, one fiber per request
   boards/<name>/
     card                     title, description, host, price, mint, public?  (readable by anyone)
     roles                    ship -> role
@@ -347,7 +347,7 @@ spikes can move them.
 | # | phase | size | done when |
 |---|---|---|---|
 | 0 | **spikes** (below) | S each | **done 2026-09-28**: see Phase 0 results |
-| 1 | skeleton: desk layout, on-load rows, `weir.json`, writer, inbox, request dispatch, crash handling, kit with `DIALECT=grubbery`, closure and weir checks | M | an empty instance installs, asks, rises, answers, and passes crash rules 8 and 9 |
+| 1 | skeleton: desk layout, on-load rows, `weir.json`, writer, inbox, request dispatch, crash handling, kit with `DIALECT=grubbery`, closure and weir checks | M | **done 2026-09-28**: see Phase 1 results |
 | 2 | host: boards, posts, comments, votes, roles, pins, sidebar, prune, caps, rate limits, the Sail pages, CSRF, public view | L | every current page and host action works on one ship; the ported suites and fiber tests pass |
 | 3 | network: follow by keep, remote writes by inbox, notifications, the registry | L | an xship script (two ships) follows, posts, comments, votes and gets notified, both ways |
 | 4 | access: public grants, member groups, moderator groups, revocation | M | a non-member is refused content by the weir; a lapsed member loses it within the sweep interval |
@@ -445,6 +445,69 @@ rules.**
     1024 sats up, which would lose those proofs.
 - All fixed with `dum:ag` behind a tested `parse-id`. See
   `docs/hoon-testing.md`.
+
+### Phase 1 results (2026-09-28)
+
+`code/` is a desk that installs on a fake ship the way a user adds one
+(`scripts/dev-deploy.py`, below). It is jailed until approval, then rises,
+opens its inbox to other ships, and answers the owner at `/apps/furum`.
+
+- **The tree:** `main.sig` (the writer), `inbox.sig`, `web.sig` with
+  `requests/<id>`, `tr/last`, `tr/inbox` (ring of 100) and `rise.json`.
+  - Orrery's flat `web.sig` layout replaced the planned `ui/`, since
+    `http-dispatch:io` makes requests beside the binder.
+  - `notify.sig` and the data directories come with the phases that use
+    them.
+- **The ask** is four poke roads: `/sys/bowl.sig`, `/sys/eyre/`,
+  `/sys/behn/` and `/sys/ames/registry`. `weir-check.py` finds nothing
+  missing and nothing unused, and `code-closure.py` finds the tree closed.
+- **Verified on ~bus, with ~wes as the other ship:**
+  - Jailed, every fiber parked: the vetoes stopped at six, and the serf sat
+    at 0.0% CPU (rule 8).
+  - After approval the public group held poke on `inbox.sig` and nothing
+    else.
+  - A poke from ~wes to the inbox reached the writer, which traced it with
+    `~wes` taken from the transport. A poke from ~wes straight to
+    `main.sig` was refused with `%peer-vetoed`.
+  - Three nexus reloads under twelve inbox pokes lost none of them, left
+    `rise.json` empty (no crash), and the page kept answering (rule 9).
+- **Tests:** eight in `tests/nexus/furum.hoon`, run with
+  `HOON_TEST_CONF=hoon-test-nexus.conf` (`docs/hoon-testing.md`).
+  - They cover the writer's grant, crash rules 8 and 9, the wait and rise
+    after a crash, the writer's refusals, the inbox and the owner gate.
+  - `rise-plan` is tested pure, in `code/lib/furum-rules.hoon`.
+
+**Found on the way:**
+- **The builder imports only `[/ %mime]` grubs** for a non-Hoon `/<`.
+  An `.svg` created or uploaded by extension becomes `[/ %svg]`, and the
+  nexus fails with "missing import". The tile icon is a cord in the nexus
+  instead (`+icon-svg`). `code/icon.svg` stays, for the shell's desk card.
+- **Approving a weir needs `granted`.** `POST /apps/grubbery/permits`
+  `{"action":"approve-weir","app":…}` without `granted` records an empty
+  grant: the shell defaults it to `{}`, not to the whole ask. The page sends
+  the list; a script must too.
+- **`/grubbery/api/poke` can't reach another ship's poke-only road.** It
+  peeks the target first, and the peek is vetoed. Cross-ship pokes need a
+  fiber (`poke-soft:io` on the remote road).
+- **The kit's mutation run stopped ~wes after about 25 rebuilds** of the
+  nexus and fiberio: probably loom exhaustion. The kit reported it and
+  stopped. After a reboot, `NOSYNC=1 hoon-test.sh` committed the clean
+  files the kit had already restored to the mount. Run long mutation jobs in
+  slices with `--only`.
+
+**Dev install** (a fake ship with grubbery, never a real one):
+
+```sh
+ship-cookie.sh <pier> http://localhost:<port> <jar>   # hoon-test-kit
+scripts/dev-deploy.py http://localhost:<port> <jar> --add
+```
+
+- It mirrors `code/` to `/furum-dev/code` in the ball and makes the
+  `furum` desk follow it.
+- Later deploys drop `--add`: each one stamps `version.json` with a `dev`
+  time, and the desk pulls on any change to it.
+- Approve on `/apps/grubbery/permits`, or post `approve-weir` with
+  `granted`. Then `POST /apps/grubbery/permits/reload {"app":…}`.
 
 ### Spikes (phase 0), as planned
 
