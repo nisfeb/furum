@@ -164,7 +164,7 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/` holds six suites, 84 tests:
+`tests/nexus/` holds seven suites, 95 tests:
 
 | suite | tests | what it owns |
 |---|---|---|
@@ -173,7 +173,8 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 | `cashu` | 17 | the Gall suite, and the wallet and recovery arms payments use (below) |
 | `furum-board` | 9 | a board in the ball, and who hears of an action (below) |
 | `furum-registry` | 2 | the directory's rules: first registrant, curation, admins |
-| `nexus` | 34 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+| `furum-theme` | 6 | the theme: colours derived as talon derives them, an accent, what a page draws with, talon's settings read as talon writes them |
+| `nexus` | 39 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
 
 The Gall desk's libs were copied to `code/lib` with grubbery imports
 (`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
@@ -233,6 +234,11 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-pay-expiry` | an invoice is waited on until its expiry, not past it; a 300 is taken as it comes, not checked |
 | `test-melt-wait` | a pending melt is asked after until paid (change restored) or unpaid (unspent proofs back); a melt the mint doesn't answer about is never given up on |
 | `test-pay-settle` | a finished payment is handed to the writer again in a minute when refused, in ten when kept |
+| `test-look-follows-talon` | by default a page draws with the theme talon picked, read from `%settings` after asking whether it runs and the entry exists |
+| `test-look-talon-off` | turned off, a page asks `%settings` nothing and draws with furum's own; with no `%settings`, the same |
+| `test-set-looks` | the writer keeps theme settings only when every theme has an id, a name and five colours, at most fifty, and the accent is a colour |
+| `test-look-talon-accent` | talon's accent alone still rules: a custom colour repaints the page, and `%contacts` is not asked |
+| `test-look-profile-accent` | a profile-colour accent reads `%contacts`' `/v1/self` after asking whether `%contacts` runs; not running, none |
 
 `furum-rules` gained `test-group` (a paid board's group is its moderators
 and the members whose time hasn't run out; the next expiry is the soonest
@@ -259,7 +265,8 @@ admins curate; only the registry names admins).
 The request routes and the network are checked live, not by unit tests:
 `scripts/api-matrix.py <url> <jar> <~ship>` works a fresh board through
 every host action and page, as owner and guest, with each refusal the
-routes promise (95 checks), and deletes it again.
+routes promise, and the theme settings (110 checks), and deletes it
+again.
 `scripts/xship.py <url-a> <jar-a> <~a> <url-b> <jar-b> <~b>` runs two
 ships at each other, both ways (58 checks): the directory, following,
 posts, comments, replies, votes, moderation, notes, and a refusal told
@@ -434,6 +441,25 @@ One survivor was redundant code, and went: `+start-pay` (and the mod
 page) checked that a withdrawal under way was the host's, but only a
 withdrawal is ever at `%melt` or `%melting`. The second pass killed every
 other mutant in the writer and fiber slices.
+
+### Mutation run, theming (2026-09-29, all ops)
+
+On `lib/furum-theme.hoon` and the app's theme arms (`+set-looks`,
+`+read-look`, `+talon-settings`, `+talon-entry`, `+profile-color`,
+`+scry`, `+running`), 68 mutants. The page routes (`+serve-theme`,
+`+theme-post`) were checked live on ~bus.
+
+The real gaps it found: the derived hover, input and on-note colours; the
+accent's hover; a theme with no id; exactly fifty themes; talon's accent
+without saved themes, a custom accent not asking `%contacts`, and a
+profile accent reading it. Each now has a test, and a second pass killed
+them.
+
+What survives:
+- **boundary**, `+custom` and `+tint` `gth->gte` on the luminance
+  thresholds (0.4 for text on a colour, 0.5 for an accent's text): only a
+  colour of exactly that luminance tells them apart, and talon uses the
+  same strict `>`.
 
 ## Not covered
 

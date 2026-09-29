@@ -1,7 +1,7 @@
 ::  tests for the furum nexus: its fibers driven through +on-file the way
 ::  grubbery starts them (lib/fiber-test), and the pure rules they use
 ::
-/+  *test, *furum-types, ft=fiber-test, tarball, nexus, fr=furum-rules, fb=furum-board, ca=cashu
+/+  *test, *furum-types, ft=fiber-test, tarball, nexus, fr=furum-rules, fb=furum-board, ca=cashu, th=furum-theme
 /=  app  /nex/furum/app
 |%
 ++  now  ~2026.1.1
@@ -392,11 +392,15 @@
 ::  from another site is refused
 ::
 ++  test-owner-gate
+  ::  a ship whose weir refuses /sys/scry: no talon settings to read
+  =/  w  =/(w a-world:ft w(refuse ~[/sys/scry]))
   =/  code
     |=  req=vase
-    =/  t  (run:ft a-world:ft ((on-file:app [/requests %r1] *blot:tarball) ~) req)
-    ::  the one read before answering: the owner's dark mode, or the board
-    =?  t  ?=(%wait end.t)  (answer-peek:ft a-world:ft t [%none ~])
+    =/  t  (run:ft w ((on-file:app [/requests %r1] *blot:tarball) ~) req)
+    ::  the reads before answering: the owner's theme, then for a guest's
+    ::  board page the board
+    =?  t  ?=(%wait end.t)  (answer-peek:ft w t [%none ~])
+    =?  t  ?=(%wait end.t)  (answer-peek:ft w t [%none ~])
     code:(status:ft t)
   =/  ask  |=([src=@p auth=? meth=@tas url=@t] (code (request:ft src auth meth url '')))
   =/  xsite
@@ -1029,5 +1033,126 @@
   ;:  weld
     (expect-eq !>(`(list *)`~[[/wait (add now ~m1)]]) !>((timers refused)))
     (expect-eq !>(`(list *)`~[[/wait (add now ~m10)]]) !>((timers kept)))
+  ==
+::  ==  theme
+::
+::  talon's `themes` entry in %settings, as talon writes it
+++  dusk-json
+  '{"themes":[{"id":"a1","name":"Dusk","dark":true,"primary":"#FBBF24","secondary":"#A5B4FC","tertiary":"#34D399","background":"#0F0D1A","surface":"#1A1625"}],"activeId":"a1"}'
+++  scry-says  |=(n=* ^-(intake:ft (poke *from:fiber:nexus [[/ %noun] !>(n)])))
+++  guide-run
+  (run:ft a-world:ft ((on-file:app [/requests %r1] *blot:tarball) ~) (request:ft ~zod & %'GET' '/apps/furum/guide' ''))
+::
+::  by default a page follows the theme picked in talon: %settings runs,
+::  talon has saved themes there and uses one, and the page draws with
+::  it; with no accent there, none. Each scry asks first whether the
+::  agent runs and the entry exists: a scry of what isn't there would
+::  fail the whole event
+::
+++  test-look-follows-talon
+  =/  t  (answer-peek:ft a-world:ft guide-run [%none ~])
+  =/  t  (feed:ft a-world:ft t (scry-says &))
+  =/  t  (feed:ft a-world:ft t (scry-says &))
+  =/  t  (feed:ft a-world:ft t (scry-says [%entry %s dusk-json]))
+  =/  t  (feed:ft a-world:ft t (scry-says |))
+  =/  asked  (turn (pokes:ft t [/ %scry-request]) tail)
+  =/  [code=@ud body=@t]  (status:ft t)
+  ;:  weld
+    %+  expect-eq
+      !>  ^-  (list *)
+      :~  [%noun ~[%gu %settings %$]]
+          [%noun /gx/settings/'has-entry'/talon/'ui-prefs'/themes/noun]
+          [%noun /gx/settings/entry/talon/'ui-prefs'/themes/noun]
+          [%noun /gx/settings/'has-entry'/talon/'ui-prefs'/accent/noun]
+      ==
+    !>(asked)
+    (expect-eq !>(200) !>(code))
+    (expect-eq !>(%.y) !>(?=(^ (find "--primary:#fbbf24;" (trip body)))))
+    (expect-eq !>(%.y) !>(?=(^ (find "color-scheme:dark;" (trip body)))))
+  ==
+::
+::  turned off, a page asks %settings nothing and draws with furum's own:
+::  here the built-in theme, light; and with no %settings running, the
+::  same
+::
+++  test-look-talon-off
+  =/  off  [%3 [[%light | [~ ~] [~ %profile ~]] (sy ~[%comments]) ~zod]]
+  =/  t  (answer-peek:ft a-world:ft guide-run (file off))
+  =/  gone  (feed:ft a-world:ft (answer-peek:ft a-world:ft guide-run [%none ~]) (scry-says |))
+  =/  has  |=([t=trail:ft x=tape] ?=(^ (find x (trip body:(status:ft t)))))
+  ;:  weld
+    (expect-eq !>(~) !>((pokes:ft t [/ %scry-request])))
+    (expect-eq !>(%.y) !>((has t "--bg:#f0eee8;")))
+    (expect-eq !>(%.n) !>((has t "prefers-color-scheme")))
+    (expect-eq !>(1) !>((lent (pokes:ft gone [/ %scry-request]))))
+    (expect-eq !>(%.y) !>((has gone "@media (prefers-color-scheme: dark)")))
+  ==
+::
+::  the writer keeps theme settings only when they are sane: every theme
+::  named with five colours that read, at most fifty, an accent that is
+::  a colour
+::
+++  test-set-looks
+  =/  from  `from:fiber:nexus`[1 /requests %r1]
+  =/  dusk=theme:th  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625']
+  =/  set
+    |=  l=*
+    =/  t
+      %^  serve  4
+        (feed:ft a-world:ft writer (poke from [[/furum %ask] !>([%look l])]))
+      |=(* [%none ~])
+    :-  (turn (pokes:ft t [/furum %done]) tail)
+    (murn (made-files t) |=([r=road:tarball n=*] ?.(=(r (rf 0 / %prefs)) ~ `n)))
+  =/  good  [%dark & [~[dusk] `'a1'] [`& %custom `'#101541']]
+  ;:  weld
+    %+  expect-eq
+      !>([`(list *)`~[~] `(list *)`~[[%3 good (sy ~[%comments %new-posts %payments]) ~ricsul-bilwyt]]])
+      !>((set good))
+    %+  expect-eq  !>(`(list *)`~[`[400 'a theme needs a name and five colours']])
+      !>(-:(set [%dark & [~[dusk(primary 'red')] ~] [~ %profile ~]]))
+    %+  expect-eq  !>(`(list *)`~[`[400 'a theme needs a name and five colours']])
+      !>(-:(set [%dark & [~[dusk(name '')] ~] [~ %profile ~]]))
+    %+  expect-eq  !>(`(list *)`~[`[400 'at most fifty themes']])
+      !>(-:(set [%dark & [(reap 51 dusk) ~] [~ %profile ~]]))
+    (expect-eq !>(`(list *)`~[~]) !>(-:(set [%dark & [(reap 50 dusk) ~] [~ %profile ~]])))
+    %+  expect-eq  !>(`(list *)`~[`[400 'a theme needs a name and five colours']])
+      !>(-:(set [%dark & [~[dusk(id '')] ~] [~ %profile ~]]))
+    %+  expect-eq  !>(`(list *)`~[`[400 'that is not a colour']])
+      !>(-:(set [%dark & [~ ~] [`& %custom `'blue']]))
+  ==
+::
+::  talon's accent alone (no saved themes) still rules: a custom colour
+::  repaints the page, and %contacts is not asked
+::
+++  test-look-talon-accent
+  =/  t  (answer-peek:ft a-world:ft guide-run [%none ~])
+  =/  t  (feed:ft a-world:ft t (scry-says &))
+  =/  t  (feed:ft a-world:ft t (scry-says |))
+  =/  t  (feed:ft a-world:ft t (scry-says &))
+  =/  t  (feed:ft a-world:ft t (scry-says [%entry %s '{"enabled":true,"mode":"Custom","customHex":"#101541"}']))
+  =/  body  (trip body:(status:ft t))
+  ;:  weld
+    (expect-eq !>(4) !>((lent (pokes:ft t [/ %scry-request]))))
+    (expect-eq !>(%.y) !>(?=(^ (find "--primary:#101541;" body))))
+  ==
+::
+::  an accent set to the profile colour takes it from %contacts, asking
+::  first whether %contacts runs; not running, there is none
+::
+++  test-look-profile-accent
+  =/  t  (answer-peek:ft a-world:ft guide-run [%none ~])
+  =/  t  (feed:ft a-world:ft t (scry-says &))
+  =/  t  (feed:ft a-world:ft t (scry-says |))
+  =/  t  (feed:ft a-world:ft t (scry-says &))
+  =/  t  (feed:ft a-world:ft t (scry-says [%entry %s '{"enabled":true,"mode":"Profile"}']))
+  =/  none  (feed:ft a-world:ft t (scry-says |))
+  =/  t  (feed:ft a-world:ft t (scry-says &))
+  =/  self  (need (de:json:html '{"color":{"type":"tint","value":"0xff.5050"}}'))
+  =/  t  (feed:ft a-world:ft t (poke *from:fiber:nexus [[/ %json] !>(self)]))
+  ;:  weld
+    %+  expect-eq  !>(~[[%json /gx/contacts/v1/self/json]])
+      !>((slag 5 (turn (pokes:ft t [/ %scry-request]) tail)))
+    (expect-eq !>(%.y) !>(?=(^ (find "--primary:#ff5050;" (trip body:(status:ft t))))))
+    (expect-eq !>(%.y) !>(?=(^ (find "--primary:#cc2020;" (trip body:(status:ft none))))))
   ==
 --

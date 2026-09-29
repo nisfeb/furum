@@ -21,7 +21,7 @@
 ::    /follows/<host>/<name>  a board on another ship we read; its follower
 ::    /cache/<host>/<name>/…  that board's mirror, the same grubs
 ::    /feed                the boards in the home feed
-::    /prefs  /seen  /limits  dark mode, push tags, the registry ship; what
+::    /prefs  /seen  /limits  the theme, push tags, the registry ship; what
 ::                         you last read; rate limits
 ::    /notes               notifications, newest first, the last 50
 ::    /registry            the directory, on the ship that keeps it (public)
@@ -46,6 +46,9 @@
 /<  fb  /lib/furum-board.hoon
 /<  fg  /lib/furum-registry.hoon
 /<  ca  /lib/cashu.hoon
+/<  th  /lib/furum-theme.hoon
+::  the logo, the single source of the tile's icon and the favicon
+/<  icon  icon.svg
 =<  ^-  nexus:nexus
     |%
     ++  on-load
@@ -55,7 +58,7 @@
         %-  pairs:enjs:format
         :~  title+s+'Furum'
             info+s+'Decentralized forums for Urbit'
-            color+s+'#cc2020'
+            color+s+'#101541'
             image+s+'/grubbery/tiles/icon/furum'
             href+s+'/apps/furum'
         ==
@@ -66,7 +69,7 @@
           [%over %& [/ %'tile.json'] [[/ %json] tile]]
           [%over %& [/ %'link.json'] [[/ %json] link]]
           [%over %& [/ %'weir.json'] [[/ %json] weir-json]]
-          [%over %& [/ %'icon.svg'] [[/ %mime] [~[%image 'svg+xml'] (as-octs:mimes:html furum-favicon-svg:fl)]]]
+          [%over %& [/ %'icon.svg'] [[/ %mime] [/image/'svg+xml' +.icon]]]
           [%fall %& [/ %'main.sig'] [[/ %sig] ~]]
           [%fall %& [/ %'inbox.sig'] [[/ %sig] ~]]
           [%fall %& [/ %'web.sig'] [[/ %sig] ~]]
@@ -84,7 +87,7 @@
           [%fall %| /follows empty-dir:loader]
           [%fall %| /cache empty-dir:loader]
           [%fall %& [/ %feed] [[/ %noun] [%1 ~]]]
-          [%fall %& [/ %prefs] [[/ %noun] [%2 default-prefs]]]
+          [%fall %& [/ %prefs] [[/ %noun] [%3 default-prefs]]]
           [%fall %& [/ %notes] [[/ %noun] [%1 ~]]]
           [%fall %& [/ %registry] [[/ %noun] [%1 *registry-store]]]
           [%fall %& [/ %directory] [[/ %noun] [%1 *registry-store]]]
@@ -207,12 +210,17 @@
       [%settle id=@ta]
       [%spend id=@ta]
       [%paying host=@p name=board-name nonce=@t ln=?]
+      [%look =looks]
   ==
-::  your preferences: dark mode, which notes push to your browsers, and
+::  your preferences: the theme, which notes push to your browsers, and
 ::  the ship whose directory you read
 ::
-+$  prefs  [dark=? tags=(set term) registry=@p]
-++  default-prefs  `prefs`[| (sy ~[%comments %new-posts %payments]) ~ricsul-bilwyt]
++$  prefs  [=looks tags=(set term) registry=@p]
+::  the theme: light, dark or the device's; whether talon's theme settings
+::  rule (on unless turned off); furum's own saved themes and accent
++$  looks  [mode=mode:th talon=? own=themes:th accent=accent:th]
+++  default-looks  `looks`[%system & [~ ~] [~ %profile ~]]
+++  default-prefs  `prefs`[default-looks (sy ~[%comments %new-posts %payments]) ~ricsul-bilwyt]
 +$  seen  [boards=(map [@p board-name] @da) posts=(map [@p board-name post-id] @da)]
 ::  ==  the ask
 ::
@@ -232,6 +240,7 @@
           (line '/sys/ames/ships/' 'post, comment and vote on boards other ships host, register your boards in the directory, and tell people when someone answers them. Refuse this and furum only works on your own boards')
           (line '/sys/push/' 'show notifications in your browser. Refuse this and they still collect on the notifications page')
           (line '/sys/iris/' 'take payment for paid boards, from the Cashu mint each one names. Refuse this and nobody can pay for your boards')
+          (line '/sys/scry/' 'follow the theme you picked in talon (its settings in %settings) and your %contacts profile colour. Refuse this and furum uses its own theme settings')
       ==
       :-  'make'
       :-  %a
@@ -288,6 +297,7 @@
       %settle  (settle id.u.o)
       %spend   (spend id.u.o)
       %paying  ;<(~ bind:m (paying +.u.o) (pure:m ~))
+      %look    (set-looks looks.u.o)
   ==
 ::  +refuse: a refused op, as the writer's last outcome at /tr/last
 ::
@@ -456,11 +466,14 @@
   ;<  ~  bind:m  (store i.names old `(drop-posts:fb brd ids))
   $(names t.names)
 ::
+::  +toggle-dark: the old light/dark switch, as a mode
+::
 ++  toggle-dark
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
   ;<  pf=prefs  bind:m  (read-prefs 0)
-  (over:io (rf 0 / %prefs) [[/ %noun] [%2 pf(dark !dark.pf)]])
+  =.  mode.looks.pf  ?:(=(%dark mode.looks.pf) %light %dark)
+  (over:io (rf 0 / %prefs) [[/ %noun] [%3 pf]])
 ::
 ++  set-prefs
   |=  [tags=(unit (set term)) registry=(unit @p)]
@@ -469,7 +482,26 @@
   ;<  pf=prefs  bind:m  (read-prefs 0)
   =?  tags.pf  ?=(^ tags)  u.tags
   =?  registry.pf  ?=(^ registry)  u.registry
-  (over:io (rf 0 / %prefs) [[/ %noun] [%2 pf]])
+  (over:io (rf 0 / %prefs) [[/ %noun] [%3 pf]])
+::  +set-looks: the theme settings, when they are sane: at most fifty
+::  themes, each with a name and five colours that read
+::
+++  set-looks
+  |=  l=looks
+  =/  m  (fiber:fiber:nexus ,(unit deny))
+  ^-  form:m
+  ?:  (gth (lent list.own.l) 50)  (refuse 400 'at most fifty themes')
+  =/  good
+    |=  t=theme:th
+    ?&  (sane-text:fr id.t 64)
+        (sane-text:fr name.t 100)
+        (levy `(list @t)`~[primary.t secondary.t tertiary.t background.t surface.t] |=(h=@t !=(~ (parse:th h))))
+    ==
+  ?.  (levy list.own.l good)  (refuse 400 'a theme needs a name and five colours')
+  ?:  &(?=(^ hex.accent.l) =(~ (parse:th u.hex.accent.l)))  (refuse 400 'that is not a colour')
+  ;<  pf=prefs  bind:m  (read-prefs 0)
+  ;<  ~  bind:m  (over:io (rf 0 / %prefs) [[/ %noun] [%3 pf(looks l)]])
+  (pure:m ~)
 ::
 ++  feed-put
   |=  [key=[@p board-name] add=?]
@@ -1340,8 +1372,8 @@
   ?.  ?=([~ %file *] vw)  (pure:m ~)
   (pure:m `(sang-noun:tarball sang.u.vw))
 ::
-::  +read-prefs: the owner's preferences; a first release's dark-mode
-::  flag carries over
+::  +read-prefs: the owner's preferences. An earlier release's dark-mode
+::  flag carries over as the mode: dark, or else the device's.
 ::
 ++  read-prefs
   |=  up=@ud
@@ -1349,17 +1381,96 @@
   ^-  form:m
   ;<  n=(unit *)  bind:m  (read-noun (rf up / %prefs))
   ?~  n  (pure:m default-prefs)
-  ?^  p=(mole |.(+:;;([%2 prefs] u.n)))  (pure:m u.p)
+  ?^  p=(mole |.(+:;;([%3 prefs] u.n)))  (pure:m u.p)
   =/  dp=prefs  default-prefs
-  ?^  d=(mole |.(+:;;([%1 ?] u.n)))  (pure:m dp(dark u.d))
+  =/  was  |=(d=? dp(mode.looks ?:(d %dark %system)))
+  ?^  o=(mole |.(+:;;([%2 dark=? tags=(set term) registry=@p] u.n)))
+    =/  p=prefs  (was dark.u.o)
+    (pure:m p(tags tags.u.o, registry registry.u.o))
+  ?^  d=(mole |.(+:;;([%1 ?] u.n)))  (pure:m (was u.d))
   (pure:m default-prefs)
+::  +read-look: what a page draws with. When talon's theme settings rule
+::  and talon has saved some, its themes and accent; else furum's own.
+::  The mode is always furum's: talon keeps its own per device.
 ::
-++  read-dark
+++  read-look
   |=  up=@ud
-  =/  m  (fiber:fiber:nexus ,?)
+  =/  m  (fiber:fiber:nexus ,look:th)
   ^-  form:m
   ;<  pf=prefs  bind:m  (read-prefs up)
-  (pure:m dark.pf)
+  =*  l  looks.pf
+  ;<  tal=(unit [themes:th accent:th])  bind:m
+    ?.  talon.l  (pure:(fiber:fiber:nexus ,(unit [themes:th accent:th])) ~)
+    talon-settings
+  =/  [ts=themes:th ac=accent:th]  (fall tal [own.l accent.l])
+  ;<  pro=(unit @ux)  bind:m
+    ?.  &(=(`& on.ac) ?=(%profile how.ac))  (pure:(fiber:fiber:nexus ,(unit @ux)) ~)
+    profile-color
+  (pure:m (draw:th mode.l (active:th ts) (accent-color:th ac pro)))
+::  a page drawn before any preference is read (a guest's refusal)
+++  plain-look  (draw:th %system ~ ~)
+::  +talon-settings: talon's saved themes and accent, from %settings
+::  (desk talon, bucket ui-prefs, each entry a JSON cord); ~ when
+::  %settings doesn't run here, or holds neither
+::
+++  talon-settings
+  =/  m  (fiber:fiber:nexus ,(unit [themes:th accent:th]))
+  ^-  form:m
+  ;<  up=(unit vase)  bind:m  (scry %noun ~[%gu %settings %$])
+  ?.  (running up)  (pure:m ~)
+  ;<  t=(unit @t)  bind:m  (talon-entry 'themes')
+  ;<  a=(unit @t)  bind:m  (talon-entry 'accent')
+  =/  ts=(unit themes:th)  ?~(t ~ (talon-themes:th u.t))
+  =/  ac=(unit accent:th)  ?~(a ~ (talon-accent:th u.a))
+  ?:  &(?=(~ ts) ?=(~ ac))  (pure:m ~)
+  (pure:m `[(fall ts [~ ~]) (fall ac [~ %profile ~])])
+::
+++  talon-entry
+  |=  key=@t
+  =/  m  (fiber:fiber:nexus ,(unit @t))
+  ^-  form:m
+  =/  at=path  /talon/'ui-prefs'/[key]/noun
+  ;<  has=(unit vase)  bind:m  (scry %noun (weld /gx/settings/'has-entry' at))
+  ?.  (running has)  (pure:m ~)
+  ;<  e=(unit vase)  bind:m  (scry %noun (weld /gx/settings/entry at))
+  ?~  e  (pure:m ~)
+  (pure:m (bind (mole |.(;;([%entry %s @t] q.u.e))) |=([* * t=@t] t)))
+::  +profile-color: the colour on our %contacts profile, when %contacts
+::  runs here and has one
+::
+++  profile-color
+  =/  m  (fiber:fiber:nexus ,(unit @ux))
+  ^-  form:m
+  ;<  up=(unit vase)  bind:m  (scry %noun ~[%gu %contacts %$])
+  ?.  (running up)  (pure:m ~)
+  ;<  j=(unit vase)  bind:m  (scry %json /gx/contacts/v1/self/json)
+  ?~  j  (pure:m ~)
+  (pure:m (biff (mole |.(!<(json u.j))) profile-color:th))
+::
+++  running  |=(u=(unit vase) =([~ &] (bind u |=(v=vase q.v))))
+::  +scry: a scry of this ship's agents through /sys/scry, its answer
+::  under a mark we keep; ~ when the road is refused. Ask only for what
+::  the agent surely answers (hence %gu and has-entry first): the
+::  service catches no failure, and a failed scry takes the whole event
+::  down, the page request with it.
+::  ponytail: %contacts' /v1/self is taken on trust; a %contacts without
+::  it fails the page for an accent set to the profile colour
+::
+++  scry
+  |=  [mark=@tas pax=path]
+  =/  m  (fiber:fiber:nexus ,(unit vase))
+  ^-  form:m
+  ;<  err=(unit tang)  bind:m
+    (poke-soft:io &+&+[/sys/scry %'main.sig'] [[/ %scry-request] [mark pax]])
+  ?^  err  (pure:m ~)
+  |=  input:fiber:nexus
+  :+  ~  q.state
+  ?+  in  [%skip ~]
+      ~  [%wait ~]
+      [~ %poke * *]
+    ?.  =([/ mark] p.sage.u.in)  [%skip ~]
+    [%done `q.sage.u.in]
+  ==
 ::
 ++  read-notes
   |=  up=@ud
@@ -1755,7 +1866,7 @@
 ::
 ::  what a request fiber knows about its request
 ::
-+$  ctx  [id=@ta our=@p now=@da dark=? site=(list @t) args=(map @t @t)]
++$  ctx  [id=@ta our=@p now=@da =look:th site=(list @t) args=(map @t @t)]
 ::
 ::  +handle-request: one request. The manifest, service worker, icons and
 ::  about page are anyone's, and so is a public board; the rest is the
@@ -1778,10 +1889,12 @@
     (send-asset id site)
   ?:  &(get ?=([%about ~] site))  (send-page id 200 (render-about:fl our))
   ?.  &(authenticated.req =(src our))
-    ?:  &(get ?=([%b @ @ *] site))  (serve-public [id our now %.n site args])
-    (send-page id 403 (render-error:fl "not authenticated" %.n))
-  ;<  dark=?  bind:m  (read-dark 1)
-  =/  c=ctx  [id our now dark site args]
+    ?.  &(get ?=([%b @ @ *] site))
+      (send-page id 403 (render-error:fl "not authenticated" plain-look))
+    ;<  =look:th  bind:m  (read-look 1)
+    (serve-public [id our now look site args])
+  ;<  =look:th  bind:m  (read-look 1)
+  =/  c=ctx  [id our now look site args]
   ?:  get  (serve-get c)
   ?.  =('POST' method.request.req)  (err c 405 "method not allowed")
   ?:  (cross-site:fr header-list.request.req)  (err c 403 "cross-site request refused")
@@ -1793,7 +1906,7 @@
   |=  c=ctx
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
-  =/  denied  (send-page id.c 403 (render-error:fl "not authenticated" %.n))
+  =/  denied  (send-page id.c 403 (render-error:fl "not authenticated" look.c))
   ?.  ?=([%b @ @ ?(~ [@ ~])] site.c)  denied
   ?.  =(`our.c (slaw %p i.t.site.c))  denied
   ;<  b=(each (unit board) @t)  bind:m  (read-board our.c i.t.t.site.c)
@@ -1803,13 +1916,13 @@
   ?~  t.t.t.site.c
     %^  send-page  id.c  200
     %:  render-board:fl  our.c  info.brd  ~(val by posts.brd)  our.c  now.c
-      %.n  %.n  %.n  (parse-sort:fl args.c)  %.n  (parse-page:fl args.c)  pinned.brd  ~  sidebar.brd
+      %.n  %.n  look.c  (parse-sort:fl args.c)  %.n  (parse-page:fl args.c)  pinned.brd  ~  sidebar.brd
     ==
-  ?~  pid=(parse-id:fl i.t.t.t.site.c)  (send-page id.c 404 (render-error:fl "post not found" %.n))
-  ?~  pst=(~(get by posts.brd) u.pid)  (send-page id.c 404 (render-error:fl "post not found" %.n))
+  ?~  pid=(parse-id:fl i.t.t.t.site.c)  (send-page id.c 404 (render-error:fl "post not found" look.c))
+  ?~  pst=(~(get by posts.brd) u.pid)  (send-page id.c 404 (render-error:fl "post not found" look.c))
   %^  send-page  id.c  200
   %:  render-post-page:fl  our.c  info.brd  u.pst  (~(gut by comments.brd) u.pid ~)
-    our.c  now.c  %.n  %.n  %.n  pinned.brd  ~
+    our.c  now.c  %.n  %.n  look.c  pinned.brd  ~
   ==
 ::  +serve-get: the owner's pages
 ::
@@ -1823,14 +1936,15 @@
       [%tag @ ~]         (serve-home c)
       [%b @ @ *]         (serve-board c)
       [%registry ~]      (redirect id.c "/apps/furum/admin")
-      [%guide ~]         (send-page id.c 200 (render-guide:fl dark.c))
-      [%create ~]        (send-page id.c 200 (render-create:fl dark.c))
+      [%guide ~]         (send-page id.c 200 (render-guide:fl look.c))
+      [%theme ~]         (serve-theme c)
+      [%create ~]        (send-page id.c 200 (render-create:fl look.c))
   ::  no %storage road yet: the upload button says S3 is not set up
       [%s3-config ~]     (send-json id.c [%o ~])
   ::
       [%notifications ~]
     ;<  notes=(list notification)  bind:m  (read-notes 1)
-    (send-page id.c 200 (render-notifications:fl notes now.c dark.c))
+    (send-page id.c 200 (render-notifications:fl notes now.c look.c))
   ::
       [%notif-count ~]
     ;<  notes=(list notification)  bind:m  (read-notes 1)
@@ -1847,7 +1961,7 @@
     ;<  st=registry-store  bind:m  (read-directory 1)
     ;<  mirrors=(list [@p board-name board])  bind:m  all-mirrors
     %^  send-page  id.c  200
-    %:  render-admin:fl  our.c  dark.c  all  =(our.c registry.pf)
+    %:  render-admin:fl  our.c  look.c  all  =(our.c registry.pf)
       ~(val by dir.st)  admins.st
       (turn mirrors |=([h=@p n=board-name *] [h n]))
       %+  turn  mirrors
@@ -1864,7 +1978,7 @@
     %:  render-share:fl
       %+  weld  (turn all |=([n=board-name *] [our.c n]))
       (turn mirrors |=([h=@p n=board-name *] [h n]))
-      (arg 'title')  (arg 'url')  (arg 'text')  dark.c
+      (arg 'title')  (arg 'url')  (arg 'text')  look.c
     ==
   ==
 ::  +serve-home: the feed of followed boards, or the directory
@@ -1891,7 +2005,7 @@
       ?~  b=(~(get by known) [host name])  ~
       %+  turn  (scag (mul pg per-page:fl) (sort-posts-by-new:fl ~(val by posts.u.b)))
       |=(p=post [host name p])
-    (send-page id.c 200 (render-feed:fl feed our.c now.c dark.c pg boards.s))
+    (send-page id.c 200 (render-feed:fl feed our.c now.c look.c pg boards.s))
   ;<  st=registry-store  bind:m  (read-directory 1)
   ;<  pf=prefs  bind:m  (read-prefs 1)
   =/  entries=(list directory-entry)  ~(val by dir.st)
@@ -1905,16 +2019,88 @@
     ?.((gth newest u.last) ~ `k)
   =/  reg=?  =(our.c registry.pf)
   ?+    site.c
-      (send-page id.c 200 (render-home:fl entries %all ~ tags reg dark.c bwn))
+      (send-page id.c 200 (render-home:fl entries %all ~ tags reg look.c bwn))
       [%curated ~]
     =/  cur  (skim entries |=(e=directory-entry curated.e))
-    (send-page id.c 200 (render-home:fl cur %curated ~ tags reg dark.c bwn))
+    (send-page id.c 200 (render-home:fl cur %curated ~ tags reg look.c bwn))
   ::
       [%tag @ ~]
     =/  tag=@tas  ;;(@tas i.t.site.c)
     =/  tagged  (skim entries |=(e=directory-entry (~(has in tags.e) tag)))
-    (send-page id.c 200 (render-home:fl tagged %tag `tag tags reg dark.c bwn))
+    (send-page id.c 200 (render-home:fl tagged %tag `tag tags reg look.c bwn))
   ==
+::  +serve-theme: the theme page: talon's theme settings as %settings
+::  holds them, furum's own, and a theme being made or edited
+::
+++  serve-theme
+  |=  c=ctx
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  pf=prefs  bind:m  (read-prefs 1)
+  =*  l  looks.pf
+  ;<  tal=(unit [themes:th accent:th])  bind:m  talon-settings
+  ;<  pro=(unit @ux)  bind:m  profile-color
+  ;<  eny=@uvJ  bind:m  get-entropy:io
+  =/  edit=(unit theme:th)
+    =/  e  (~(get by args.c) 'edit')
+    ?~  e  ~
+    ?.  =('new' u.e)
+      =/  hit  (skim list.own.l |=(t=theme:th =(id.t u.e)))
+      ?~(hit ~ `i.hit)
+    ::  a new theme starts from the built-in one, light
+    `[(crip ((x-co:co 12) (end [3 6] eny))) '' | '#cc2020' '#8b1a1a' '#cc8020' '#f0eee8' '#f6f0e8']
+  %^  send-page  id.c  200
+  %:  render-theme:fl  look.c  mode.l  talon.l  tal  own.l  accent.l  pro  edit
+    (~(gut by args.c) 'msg' '')
+  ==
+::  +theme-post: a change on the theme page, made to the saved settings
+::
+++  theme-post
+  |=  [c=ctx what=@t f=$-(@t @t)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  pf=prefs  bind:m  (read-prefs 1)
+  =/  l=looks  looks.pf
+  =/  own=themes:th  own.l
+  =/  new=(unit looks)
+    ?+    what  ~
+        %mode
+      =/  md  (f 'mode')
+      ?.  ?=(?(%system %light %dark) md)  ~
+      `l(mode md)
+    ::
+        %talon  `l(talon =('on' (f 'on')))
+    ::
+        %use
+      =/  id  (f 'id')
+      ?:  =('' id)  `l(active.own ~)
+      ?.  (lien list.own |=(t=theme:th =(id.t id)))  ~
+      `l(active.own `id)
+    ::
+        %save
+      =/  t=theme:th
+        :*  (f 'id')  (f 'name')  =('dark' (f 'dark'))
+            (f 'primary')  (f 'secondary')  (f 'tertiary')  (f 'background')  (f 'surface')
+        ==
+      =/  rest  (skip list.own |=(o=theme:th =(id.o id.t)))
+      `l(own [(snoc rest t) `id.t])
+    ::
+        %delete
+      =/  id  (f 'id')
+      =/  rest  (skip list.own |=(o=theme:th =(id.o id)))
+      `l(own [rest ?:(=(`id active.own) ~ active.own)])
+    ::
+        %accent
+      ?:  !=('' (f 'set'))  `l(accent [`& %custom `(f 'hex')])
+      =/  how  (f 'how')
+      ?:  =('profile' how)  `l(accent [`& %profile hex.accent.l])
+      ?:  =('custom' how)  `l(accent [`& %custom `(f 'hex')])
+      `l(on.accent `|)
+    ==
+  ?~  new  (err c 400 "that is not a theme setting")
+  ;<  res=(unit deny)  bind:m  (ask [%look u.new])
+  ?~  res  (redirect id.c "/apps/furum/theme")
+  (err c code.u.res (trip why.u.res))
 ::  +serve-board: a board and the pages under it: one this ship hosts,
 ::  or its mirror of one another ship hosts. The first visit to another
 ::  ship's board starts its follower and waits on the copy.
@@ -1928,13 +2114,13 @@
   =/  name=board-name  i.t.t.site.c
   =/  rest=(list @t)  t.t.t.site.c
   =/  local=?  =(u.host our.c)
-  ?:  ?=([%submit ~] rest)  (send-page id.c 200 (render-submit:fl u.host name dark.c))
+  ?:  ?=([%submit ~] rest)  (send-page id.c 200 (render-submit:fl u.host name look.c))
   ;<  b=(each (unit board) @t)  bind:m  (read-board u.host name)
   ?:  ?=(%| -.b)  (err c 500 (trip p.b))
   ?~  p.b
     ?:  |(local !(valid-board-name:fl name))  (err c 404 "board not found")
     ;<  ~  bind:m  (tell [%watch u.host name])
-    (send-page id.c 200 (render-loading:fl (weld "/apps/furum" (trip (spat site.c))) dark.c))
+    (send-page id.c 200 (render-loading:fl (weld "/apps/furum" (trip (spat site.c))) look.c))
   ::  who paid is kept apart from a board we host; the mod page lists them
   ;<  mem=(each (map @p @da) @t)  bind:m
     ?.  local  (pure:(fiber:fiber:nexus ,(each (map @p @da) @t)) &+~)
@@ -1948,7 +2134,7 @@
     (pure:(fiber:fiber:nexus ,?) !=(`[%1 &] n))
   ?:  ?=([%payment @ ~] rest)  (serve-payment c u.host name brd i.t.rest closed)
   ?:  &(closed ?=(^ payment.brd))
-    (send-page id.c 200 (render-paywall:fl u.host info.brd u.payment.brd ~ dark.c %.n))
+    (send-page id.c 200 (render-paywall:fl u.host info.brd u.payment.brd ~ look.c %.n))
   ?+    rest  (err c 404 "page not found")
       ~
     ;<  s=seen  bind:m  (read-seen 1)
@@ -1956,7 +2142,7 @@
     ;<  ~  bind:m  (tell [%seen u.host name ~])
     %^  send-page  id.c  200
     %:  render-board:fl  u.host  info.brd  ~(val by posts.brd)  our.c  now.c
-      mod  %.y  dark.c  (parse-sort:fl args.c)  (~(has in fol) [u.host name])
+      mod  %.y  look.c  (parse-sort:fl args.c)  (~(has in fol) [u.host name])
       (parse-page:fl args.c)  pinned.brd  (~(get by boards.s) [u.host name])  sidebar.brd
     ==
   ::
@@ -1989,7 +2175,7 @@
     =/  melting=?
       (lien live |=(q=pay &(=(name name.q) ?=(?(%melt %melting) -.step.q))))
     %^  send-page  id.c  200
-    %:  render-mod:fl  u.host  info.brd  roles.brd  local  dark.c  sidebar.brd  payment.brd
+    %:  render-mod:fl  u.host  info.brd  roles.brd  local  look.c  sidebar.brd  payment.brd
       ?:(?=(%& -.w) p.w ~)  melting  (~(gut by args.c) 'saved' '')  paid.brd  now.c  prune.brd
     ==
   ::
@@ -1997,7 +2183,7 @@
     ?~  pid=(parse-id:fl i.rest)  (err c 404 "post not found")
     ?~  pst=(~(get by posts.brd) u.pid)  (err c 404 "post not found")
     ?.  =(our.c author.u.pst)  (err c 403 "only the author can edit this post")
-    (send-page id.c 200 (render-edit-post:fl u.host name u.pst dark.c))
+    (send-page id.c 200 (render-edit-post:fl u.host name u.pst look.c))
   ::
       [@ ~]
     ?~  pid=(parse-id:fl i.rest)  (err c 404 "post not found")
@@ -2006,7 +2192,7 @@
     ;<  ~  bind:m  (tell [%seen u.host name `u.pid])
     %^  send-page  id.c  200
     %:  render-post-page:fl  u.host  info.brd  u.pst  (~(gut by comments.brd) u.pid ~)
-      our.c  now.c  mod  %.y  dark.c  pinned.brd  (~(get by posts.s) [u.host name u.pid])
+      our.c  now.c  mod  %.y  look.c  pinned.brd  (~(get by posts.s) [u.host name u.pid])
     ==
   ==
 ::  +serve-post: the owner's forms. Most are an action: applied by our
@@ -2023,6 +2209,7 @@
   =/  admin  |=(a=registry-action (reg-then c a "/apps/furum/admin"))
   ?+    site.c  (err c 404 "not found")
       [%dark-mode ~]            (ask-then c [%toggle-dark-mode ~] back)
+      [%theme @ ~]              (theme-post c i.t.site.c f)
       [%notifications %read ~]  (ask-then c [%mark-notifications-read ~] "/apps/furum/notifications")
       [%b @ @ *]                (serve-board-post c f back)
       [%admin %refresh-registry ~]  (redirect id.c "/apps/furum/admin")
@@ -2275,17 +2462,17 @@
   =*  v  view.u.e
   ?-    -.v
       %failed   (err c 402 "the payment failed: {(trip why.v)}")
-      %invoice  (send-page id.c 200 (render-lightning-invoice:fl host info.brd pc `bolt11.v dark.c))
+      %invoice  (send-page id.c 200 (render-lightning-invoice:fl host info.brd pc `bolt11.v look.c))
       %asked
-    ?:  ln.v  (send-page id.c 200 (render-lightning-invoice:fl host info.brd pc ~ dark.c))
-    (send-page id.c 200 (render-paywall:fl host info.brd pc ~ dark.c &))
+    ?:  ln.v  (send-page id.c 200 (render-lightning-invoice:fl host info.brd pc ~ look.c))
+    (send-page id.c 200 (render-paywall:fl host info.brd pc ~ look.c &))
   ::  paid: our copy of the board looks again, until it opens to us
       %paid
     ?.  closed  (redirect id.c base)
     ;<  *  bind:m
       %+  (with-timeout:io (unit tang))  /resync
       [~s5 (poke-soft:io (rf 1 /follows/(scot %p host) name) [[/furum %op] ~])]
-    (send-page id.c 200 (render-paywall:fl host info.brd pc ~ dark.c &))
+    (send-page id.c 200 (render-paywall:fl host info.brd pc ~ look.c &))
   ==
 ::  +reg-then: a registry action of ours, then the redirect
 ::
@@ -2395,7 +2582,7 @@
 ::
 ++  err
   |=  [c=ctx code=@ud msg=tape]
-  (send-page id.c code (render-error:fl msg dark.c))
+  (send-page id.c code (render-error:fl msg look.c))
 ::
 ++  send-page
   |=  [id=@ta code=@ud page=manx]
@@ -2426,22 +2613,22 @@
   =/  raw
     |=  [type=@t body=@t]
     (send-simple:srv id [[200 ~[['content-type' type]]] `(as-octs:mimes:html body)])
-  ?+    site  (raw 'image/svg+xml' furum-favicon-svg:fl)
+  ?+    site  (send-simple:srv id [[200 ~[['content-type' 'image/svg+xml']]] `+.icon])
       [%sw ~]
     %+  send-simple:srv  id
     :_  `(as-octs:mimes:html furum-sw-js:fl)
     [200 ~[['content-type' 'application/javascript'] ['service-worker-allowed' '/apps/furum']]]
   ::
+  ::  the logo as a png, for the manifest and iOS's home screen
       [%icon ~]
-    ?~  jpg=(de:base64:mimes:html furum-icon-b64:fl)  (raw 'image/svg+xml' furum-favicon-svg:fl)
-    (send-simple:srv id [[200 ~[['content-type' 'image/jpeg']]] jpg])
+    (send-simple:srv id [[200 ~[['content-type' 'image/png']]] (de:base64:mimes:html furum-icon-png:fl)])
   ::
       [%manifest ~]
     %+  raw  'application/manifest+json'
     %:  rap  3
       '{"name":"furum","short_name":"furum","start_url":"/apps/furum",'
       '"display":"standalone","background_color":"#f6f6ef","theme_color":"#cc2020",'
-      '"icons":[{"src":"/apps/furum/icon","sizes":"200x200","type":"image/jpeg"}],'
+      '"icons":[{"src":"/apps/furum/icon","sizes":"512x512","type":"image/png"}],'
       '"share_target":{"action":"/apps/furum/share","method":"GET",'
       '"params":{"title":"title","text":"text","url":"url"}}}'
       ~

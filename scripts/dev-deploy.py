@@ -43,12 +43,24 @@ def ensure_dir(path):
     s, b = call('POST', f'grubbery/ball/{parent}', {'action': 'create-folder', 'foldername': name})
     if s not in (200, 303): sys.exit(f'create-folder {path}: {s} {b[:200]}')
 
+def blot(path):
+    s, b = call('GET', f'grubbery/ball/{path}?info=1')
+    return json.loads(b).get('blot') if s == 200 else None
+
+#  a .hoon or .json file is kept under its own mark; any other (the icon)
+#  as mime, which is what a /< import of it finds, as the forge lays it
 def put(rel, text):
     path = f'{dest}/{rel}'
     d, name = path.rsplit('/', 1)
     ensure_dir(d)
+    form = {'action': 'create-file', 'filename': name}
+    if not name.endswith(('.hoon', '.json')):
+        form['blot'] = '/mime'
+        if blot(path) not in (None, '/mime'):
+            s, b = call('POST', f'grubbery/ball/{d}', {'action': 'delete-grub', 'filename': name})
+            if s not in (200, 303): sys.exit(f'delete-grub {path}: {s} {b[:200]}')
     if not exists(path):
-        s, b = call('POST', f'grubbery/ball/{d}', {'action': 'create-file', 'filename': name})
+        s, b = call('POST', f'grubbery/ball/{d}', form)
         if s not in (200, 303): sys.exit(f'create-file {path}: {s} {b[:200]}')
     s, b = call('POST', f'grubbery/ball/{path}', {'action': 'write-text', 'content': text})
     if s != 200: sys.exit(f'write-text {path}: {s} {b.decode(errors="replace")[:400]}')

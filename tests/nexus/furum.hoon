@@ -1,7 +1,7 @@
 ::  tests for lib/furum: link safety, input parsing and the orderings
 ::  users see
 ::
-/+  *test, *furum-types, fl=furum
+/+  *test, *furum-types, fl=furum, th=furum-theme
 |%
 ++  mk-post
   |=  [id=@ud at=@da up=@ud dn=@ud]
@@ -40,11 +40,12 @@
     ^-  (list tape)
     =/  p=post  (mk-post 0 now 0 0)
     =.  p  p(title 'T', url `url)
-    :~  (en-xml:html (render-feed:fl ~[[~zod %b p]] ~zod now %.n 1 ~))
-        (en-xml:html (render-board:fl ~zod bi ~[p] ~zod now %.n %.y %.n %new %.n 1 ~ ~ ''))
-        (en-xml:html (render-board:fl ~zod bi ~[p] ~zod now %.n %.y %.n %new %.n 1 (sy ~[0]) ~ ''))
-        (en-xml:html (render-post-page:fl ~zod bi p ~ ~zod now %.n %.y %.n ~ ~))
-        (en-xml:html (render-notifications:fl ~[['T' 'b' `url now %.n]] now %.n))
+    =/  lk  (draw:th %system ~ ~)
+    :~  (en-xml:html (render-feed:fl ~[[~zod %b p]] ~zod now lk 1 ~))
+        (en-xml:html (render-board:fl ~zod bi ~[p] ~zod now %.n %.y lk %new %.n 1 ~ ~ ''))
+        (en-xml:html (render-board:fl ~zod bi ~[p] ~zod now %.n %.y lk %new %.n 1 (sy ~[0]) ~ ''))
+        (en-xml:html (render-post-page:fl ~zod bi p ~ ~zod now %.n %.y lk ~ ~))
+        (en-xml:html (render-notifications:fl ~[['T' 'b' `url now %.n]] now lk))
     ==
   =/  has  |=(k=tape |=(t=tape ?=(^ (find k (cass t)))))
   ;:  weld

@@ -1,11 +1,11 @@
 # Moving furum to grubbery
 
 A plan for rebuilding furum as a grubbery nexus, the way auspex and lattice
-were built, and for moving live boards off the `%furum` Gall agent without
-losing a post, a vote or a sat. Written 2026-09-28 against the grubbery
-kernel ricsul runs (`nisfeb/grubbery` `dist/single-release`, 79c66b9) and
-against auspex (release 17), lattice (32), orrery (60) and armillary (12)
-as they stand on disk. Nothing here has been built yet.
+were built, and for retiring the `%furum` Gall agent. Written 2026-09-28
+against the grubbery kernel ricsul runs (`nisfeb/grubbery`
+`dist/single-release`, 79c66b9) and against auspex (release 17), lattice
+(32), orrery (60) and armillary (12) as they stand on disk. Phases 0 to 5
+are built; each has its results below.
 
 ## Decisions
 
@@ -16,14 +16,11 @@ Made by the owner on 2026-09-28:
    subscriptions, so a grubbery host and a Gall client can't see each other,
    and nothing will translate between them. (Lattice deleted three bridges in
    one audit: 635c220, "burn the corpses of three migrations".)
-   - The last Gall release (0.6) tells its users where furum went.
-   - The registry and the known hosts move together, with an announcement.
-   - Gall clients left behind stop receiving updates from moved hosts, and
-     their banner says why.
+   - The Gall agent gets no last release; the announcement tells its users
+     where furum went.
 2. **The registry runs on `~ricsul-bilwyt`**, the ship whose grubbery
-   publishes the desks. The Gall registry and the boards it hosts live on
-   `~ricsul-bilwyt-dozzod-nisfeb` today, so they move ships as well as
-   frameworks ("Re-hosting", under migration).
+   publishes the desks. The Gall registry on `~ricsul-bilwyt-dozzod-nisfeb`
+   is retired with the agent.
 3. **Installed only when added**, never as a stock desk.
    - A user adds it by code path: `~ricsul-bilwyt/apps/shell.shell/desks/furum.desk/desk/code`
      on the desk page, or `POST /apps/grubbery/desks/add {name, code}`.
@@ -38,6 +35,11 @@ Taken as recommended unless the owner says otherwise:
 5. **Keep Cashu at the host**, each payment in its own fiber (below).
    Armillary's BTCPay checkout is the alternative if hosts would rather run a
    merchant server than hold ecash.
+
+Made by the owner on 2026-09-29:
+
+6. **Nothing is migrated** from the Gall agent: no export, no import, no
+   re-hosting, no redirects. Phase 6 is dropped ("Retiring the Gall agent").
 
 ## What changes, in one table
 
@@ -171,7 +173,7 @@ do.
   | `/sys/ames/usergroups/` | make | member and moderator groups for paid boards (optional: refused, a paid board stays closed to all but its host) |
   | `/sys/iris/` | poke | Cashu mints, for paid boards (optional) |
   | `/sys/push/` | poke | browser notifications (optional) |
-  | `/sys/scry/` | poke | S3 upload settings from `%storage`, and the one-time import from the old agent (optional) |
+  | `/sys/scry/` | poke | talon's theme settings in `%settings` and the `%contacts` profile colour, for the theme; S3 upload settings from `%storage` (optional) |
 
 - **Public grants** go through the registry, as auspex's `+grant-public`
   does. The writer calls `reg-register-at-soft:io` on its own rail, then
@@ -315,70 +317,37 @@ do.
   extension.
 - **Optional:** live refresh through a beacon grub and the kernel's keep-SSE,
   as auspex and orrery do. It is owner-only, so public pages would poll.
+- **Theming, as talon has it** (built 2026-09-29, `lib/furum-theme.hoon`).
+  - A mode: System (the device's), Light or Dark, for the built-in theme.
+  - Saved themes: a name, light or dark, and five colours (primary,
+    secondary, tertiary, background, surface). Every other colour a page
+    draws with is derived by talon's rules (`CustomTheme.kt`): ink or
+    paper text by luminance, containers blended toward the background or
+    white. The one difference is that furum blends in sRGB, talon in Oklab.
+  - An accent (off, the `%contacts` profile colour, or a hex) repaints the
+    primary colour.
+  - "Use talon's theme settings" is on by default. Talon keeps its saved
+    themes and accent in `%settings` (desk `talon`, bucket `ui-prefs`,
+    entries `themes` and `accent`, each a JSON cord), and a page reads
+    them there through `/sys/scry`. When talon has saved none, furum's own
+    rule. The mode stays furum's: talon keeps its per device.
+  - The stylesheet draws every colour from a role (a CSS variable), and
+    `+draw` writes the roles for the theme in use; the built-in theme under
+    System writes both, the dark under `prefers-color-scheme`.
+  - A scry through `/sys/scry` that fails takes the whole event down, the
+    page with it. So `%gu` (with the vane's `$` path; without it gall
+    blocks) and `has-entry` come first.
 
-## Migrating the live data
+## Retiring the Gall agent
 
-The lattice cutover (2026-07, `lattice` git history, `docs/cutover-runbook.md`
-before 635c220) is the precedent. It was a hard cutover with brief
-downtime, an export over scry, an import through a nexus action, and the
-old agent kept for rollback.
-
-1. **A last Gall release (0.6).** It adds `/x/export/noun`: a versioned noun
-   of the whole state (boards with wallets and `paid`, registry, admins,
-   followed, notifications, seen marks, prefs). Caches are left out; they
-   re-sync.
-   - It stops taking new payments and invoices, and says why.
-   - It shows a banner saying furum is moving.
-   - It waits for pending swaps, melts and mints to drain before the export
-     is taken.
-2. **Import, owner-initiated** (`POST /api/import`, lattice's
-   `+handle-legacy-migrate`):
-   - First `%gu` (an absent agent's `%gx` crashes the event).
-   - Then `typed-scry` the export, and clam it with a frozen copy of
-     state-16's types under `mule`.
-   - Write in capped batches through the writer.
-   - Write a `legacy/state` marker only when nothing was left behind.
-3. **Verify before switching**, with numbers from both sides:
-   - boards, posts, comments and votes per board;
-   - roles;
-   - paid-until per member, which becomes group membership;
-   - **proof count and sats per mint**, which must match exactly.
-4. **Cut over.**
-   - Grubbery's `/apps/furum` binding shadows the agent's, which is why the
-     export goes over scry.
-   - `|suspend %furum`; never `|nuke`, since the suspended agent is the
-     rollback.
-   - Rehearse on a fake ship holding a copy of production's export before
-     touching production. Production steps are the owner's to run.
-
-### Re-hosting (moon to `~ricsul-bilwyt`)
-
-The Gall registry and its boards are on `~ricsul-bilwyt-dozzod-nisfeb`, and
-the grubbery registry will be on `~ricsul-bilwyt`. A board's identity is
-`host/name`, so boards that move also move URLs: `/b/~ricsul-bilwyt-dozzod-nisfeb/<name>`
-becomes `/b/~ricsul-bilwyt/<name>`.
-
-- **The export has to travel between ships, so the import takes a file as
-  well as a scry.** The 0.6 Gall release writes its export noun to clay, as
-  `%backup-to-clay` already does. The owner copies the jammed file out of
-  the moon's pier. `POST /api/import` on `~ricsul-bilwyt` accepts it as the
-  request body (owner-only, size-capped, clammed under `mule` like the
-  scry path).
-- **The import rewrites the host.**
-  - Every board's `host` and the registry entries become `~ricsul-bilwyt`.
-  - Posts, comments, votes and roles carry over.
-  - A role held by the moon itself becomes a mod role for the new host.
-  - `paid` carries over into the new member groups.
-  - Wallet proofs are bearer tokens, so they move unchanged. Verify the sats
-    per mint on both sides.
-  - The moon keeps its copy for rollback. A mint refuses a proof spent
-    twice, so once `~ricsul-bilwyt` spends any, the moon's copies of those
-    are worthless. A rollback re-checks its proofs with the mint (NUT-07)
-    before showing a balance.
-- **Old links redirect.** The moon's last Gall release answers its old board
-  and post URLs with a 301 to `~ricsul-bilwyt`'s, until it is retired.
-- **Registry entries for boards hosted elsewhere** carry over as they are.
-  Their hosts re-register when they move.
+Nothing is migrated (owner, 2026-09-29). The grubbery furum starts fresh,
+with the directory on `~ricsul-bilwyt`, and the `%furum` Gall agent gets no
+last release.
+- At cutover the owner suspends the moon's agent (`|suspend %furum`, never
+  `|nuke`).
+- Gall users keep what they have. The announcement tells them where furum
+  went; hosts start again on the nexus.
+- A Gall client and a nexus host can't see each other (decision 1).
 
 ## Phases
 
@@ -393,8 +362,8 @@ spikes can move them.
 | 3 | network: follow by keep, remote writes by inbox, notifications, the registry | L | **done 2026-09-28**: see Phase 3 results |
 | 4 | access: public grants, member groups, moderator groups, revocation | M | **done 2026-09-28**: see Phase 4 results |
 | 5 | payments: payment grubs, wallet, Lightning and ecash, NUT-07/09 recovery, membership sweeper | L | **done 2026-09-29**: see Phase 5 results |
-| 6 | migration: the 0.6 Gall release (export, payment freeze, banner, redirects), import by scry and by file, re-hosting, verification | M | a copy of the moon's export imports on a fake `~ricsul-bilwyt` stand-in, re-hosted, with every count and every sat matching |
-| 7 | cutover and release: ricsul's forge and `furum.desk` (not stock), then the registry and the moon's boards on `~ricsul-bilwyt`, then the other hosts, then the announcement | S | `~ricsul-bilwyt` runs the nexus; the moon's agent sits suspended; crash rules 7, 8 and 9, api-matrix and xship all pass on the release; the owner has opened the desk to `/public` |
+| 6 | ~~migration~~ | — | **dropped 2026-09-29**: nothing is migrated from the Gall agent |
+| 7 | cutover and release: a new app icon in the nisfeb style, ricsul's forge and `furum.desk` (not stock), the registry on `~ricsul-bilwyt`, the moon's agent suspended, then the announcement | S | `~ricsul-bilwyt` runs the nexus with the registry; the moon's agent sits suspended; crash rules 7, 8 and 9, api-matrix, xship, access and pay all pass on the release; the owner has opened the desk to `/public` |
 | 8 | later: MCP tools, live refresh, keen for immutable post revisions, eauth guests | — | as wanted |
 
 ### Phase 0 results (2026-09-28)
