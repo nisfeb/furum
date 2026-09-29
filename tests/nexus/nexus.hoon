@@ -1,7 +1,7 @@
 ::  tests for the furum nexus: its fibers driven through +on-file the way
 ::  grubbery starts them (lib/fiber-test), and the pure rules they use
 ::
-/+  *test, *furum-types, ft=fiber-test, tarball, nexus, fr=furum-rules, fb=furum-board
+/+  *test, *furum-types, ft=fiber-test, tarball, nexus, fr=furum-rules, fb=furum-board, ca=cashu
 /=  app  /nex/furum/app
 |%
 ++  now  ~2026.1.1
@@ -506,5 +506,528 @@
     (expect-eq !>([4 (add now ~m7)]) !>((rise-plan:fr (row 4 now (add now ~m7)) | now)))
     %+  expect-eq  !>([3 (add now ~m4)])
       !>((rise-plan:fr (rise-row:fr [3 (add now ~m4)] now) | now))
+  ==
+::  ==  payments
+::
+::  answer the last cull a stopped run sent, as done
+++  gone
+  |=  t=trail:ft
+  ^-  trail:ft
+  =/  ws  (murn darts.t |=(d=dart:nexus ?.(?=([%node * * %cull *] d) ~ `wire.d)))
+  ?~  ws  t
+  (feed:ft a-world:ft t [%gone (rear ws) ~])
+::
+::  a test mint: one keyset, 00ab, every amount's key k*G
+::
+++  kk  7
+++  j  |=(t=@t (need (de:json:html t)))
+++  the-mint  'http://m'
+++  keysets-json  (j '{"keysets":[{"id":"00ab","unit":"sat","active":true,"input_fee_ppk":100}]}')
+++  keys-json
+  ^-  json
+  %-  pairs:enjs:format
+  :~  :-  'keysets'
+      :-  %a
+      :_  ~
+      %-  pairs:enjs:format
+      :~  ['id' s+'00ab']
+          ['unit' s+'sat']
+          :-  'keys'
+          %-  pairs:enjs:format
+          %+  turn  (gulf 0 10)
+          |=(i=@ [(crip (a-co:co (bex i))) s+(point-to-hex:ca (ec-mul:ca secp-g:ca kk))])
+      ==
+  ==
+++  the-keys  (need (parse-keys:ca keys-json))
+::  the mint's signature on an output, and the proof it makes
+++  sig
+  |=  o=out:ca
+  ^-  json
+  %-  pairs:enjs:format
+  :~  ['amount' (numb:enjs:format amount.o)]
+      ['id' s+id.o]
+      ['C_' s+(point-to-hex:ca (ec-mul:ca (hex-to-point:ca b.o) kk))]
+  ==
+++  proof-of
+  |=  o=out:ca
+  ^-  cashu-proof
+  [amount.o id.o secret.o (point-to-hex:ca (ec-mul:ca (hash-to-curve:ca secret.o) kk))]
+::  the mint's answer, as iris hands it on
+++  mint-says
+  |=  [code=@ud body=json]
+  ^-  intake:ft
+  %+  poke  *from:fiber:nexus
+  :-  [/ %http-response]
+  !>  ^-  client-response:iris
+  [%finished [code ~] `['application/json' (as-octs:mimes:html (en:json:html body))]]
+::  what a payment asked the mint, in order: method and path
+++  asked
+  |=  t=trail:ft
+  ^-  (list [@t @t])
+  %+  turn  (pokes:ft t [/ %iris-request])
+  |=  [* n=*]
+  =/  r  ;;(request:http n)
+  [method.r (rsh [3 (met 3 the-mint)] url.r)]
+++  last-body
+  |=  t=trail:ft
+  ^-  json
+  =/  r  ;;(request:http +:(rear (pokes:ft t [/ %iris-request])))
+  (need (de:json:html q:(need body.r)))
+++  pay-of  |=(t=trail:ft ^-(pay +:;;([%1 pay] q.state.t)))
+++  a-pay  ^-(pay [~nec %b 'n1' the-mint 100 ~d30 %quote ~])
+::  a payment's fiber, started with this step
+++  pay-run
+  |=  s=pay-step
+  =/  p  a-pay
+  (run:ft a-world:ft ((on-file:app [/pay %x] *blot:tarball) ~) !>([%1 p(step s)]))
+++  two-proofs
+  (j '[{"amount":64,"id":"00ab","secret":"s1","C":"02aa"},{"amount":64,"id":"00ab","secret":"s2","C":"02bb"}]')
+::
+::  ecash in hand: the mint's keysets and keys, then outputs for all of
+::  it less the mint's fee (two proofs at 100 per thousand: 1), kept
+::  before anything is sent; the mint's record of them asked first, then
+::  the swap; its signatures made proofs, and the payment handed to the
+::  writer
+::
+++  test-pay-swap
+  =/  t0  (pay-run [%swap two-proofs])
+  =/  t1  (feed:ft a-world:ft t0 (mint-says 200 keysets-json))
+  =/  t2  (feed:ft a-world:ft t1 (mint-says 200 keys-json))
+  =/  p2  (pay-of t2)
+  ?>  ?=(%swapping -.step.p2)
+  =/  outs  outs.step.p2
+  =/  t3  (feed:ft a-world:ft t2 (mint-says 200 (j '{"outputs":[],"signatures":[],"promises":[]}')))
+  =/  swap-body  (last-body t3)
+  =/  t4  (feed:ft a-world:ft t3 (mint-says 200 (pairs:enjs:format ~[['signatures' [%a (turn outs sig)]]])))
+  ;:  weld
+    %+  expect-eq  !>(~[1 2 4 8 16 32 64])
+      !>((sort (turn outs |=(o=out:ca amount.o)) lth))
+    (expect-eq !>(the-keys) !>(keys.step.p2))
+    %+  expect-eq
+      !>(`(list [@t @t])`~[['GET' '/v1/keysets'] ['GET' '/v1/keys/00ab'] ['POST' '/v1/restore'] ['POST' '/v1/swap']])
+      !>((asked t3))
+    (expect-eq !>((build-swap-request:ca two-proofs (out-reqs:ca outs))) !>(swap-body))
+    (expect-eq !>([%done (turn outs proof-of)]) !>(step:(pay-of t4)))
+    %+  expect-eq  !>(`(list [road:tarball *])`~[[(rf 1 / %'main.sig') [%settle %x]]])
+      !>((pokes:ft t4 [/furum %ask]))
+  ==
+::
+::  answers come back by fiber, not by request: an earlier request's
+::  answer (the keysets again, a restart's leftover) is let go while the
+::  keys are awaited, and the keys' own is taken. A failure names no
+::  request and is taken as it comes: no keys, so the step waits and
+::  tries again
+::
+++  test-pay-stale-answer
+  =/  t1  (feed:ft a-world:ft (pay-run [%swap two-proofs]) (mint-says 200 keysets-json))
+  =/  stale  (feed:ft a-world:ft t1 (mint-says 200 keysets-json))
+  =/  real  (feed:ft a-world:ft stale (mint-says 200 keys-json))
+  =/  broke  (feed:ft a-world:ft t1 (mint-says 500 (j '{"detail":"oops"}')))
+  ;:  weld
+    (expect-eq !>([%wait 2]) !>([end.stale (lent (asked stale))]))
+    (expect-eq !>(%swapping) !>(-.step:(pay-of real)))
+    (expect-eq !>(%swap) !>(-.step:(pay-of broke)))
+    (expect-eq !>(2) !>((lent (asked broke))))
+    %+  expect-eq  !>(`(list *)`~[[/wait (add now ~s15)]])
+      !>((skim (turn (pokes:ft broke [/ %timer-set]) tail) |=(a=* ?=([[%wait ~] *] a))))
+  ==
+::
+::  a swap resumed after a restart asks the mint what it signed before it
+::  swaps again: signed, those are the proofs, and no second swap goes
+::
+++  test-pay-resumes-by-restore
+  =/  outs  (new-outs:ca ~[1 2 4] '00ab' 9)
+  =/  t0  (pay-run [%swapping two-proofs the-keys outs])
+  =/  answer
+    %-  pairs:enjs:format
+    :~  ['outputs' [%a (turn outs |=(o=out:ca (pairs:enjs:format ~[['B_' s+b.o] ['amount' (numb:enjs:format amount.o)] ['id' s+'00ab']])))]]
+        ['signatures' [%a (turn outs sig)]]
+    ==
+  =/  t1  (feed:ft a-world:ft t0 (mint-says 200 answer))
+  ;:  weld
+    (expect-eq !>(`(list [@t @t])`~[['POST' '/v1/restore']]) !>((asked t1)))
+    (expect-eq !>((build-restore-request:ca (out-reqs:ca outs))) !>((last-body t1)))
+    (expect-eq !>([%done (turn outs proof-of)]) !>(step:(pay-of t1)))
+  ==
+::
+::  a swap the mint refuses fails with the mint's reason, but only once
+::  the mint says it signed none of our outputs
+::
+++  test-pay-refused
+  =/  outs  (new-outs:ca ~[1 2 4] '00ab' 9)
+  =/  none  (mint-says 200 (j '{"outputs":[],"signatures":[]}'))
+  =/  t0  (pay-run [%swapping two-proofs the-keys outs])
+  =/  t1  (feed:ft a-world:ft t0 none)
+  =/  t2  (feed:ft a-world:ft t1 (mint-says 400 (j '{"detail":"Token already spent.","code":11001}')))
+  =/  t3  (feed:ft a-world:ft t2 none)
+  ;:  weld
+    (expect-eq !>(%swapping) !>(-.step:(pay-of t2)))
+    %+  expect-eq
+      !>(`(list [@t @t])`~[['POST' '/v1/restore'] ['POST' '/v1/swap'] ['POST' '/v1/restore']])
+      !>((asked t3))
+    (expect-eq !>([%failed 'Token already spent.' ~]) !>(step:(pay-of t3)))
+    (expect-eq !>(1) !>((lent (pokes:ft t3 [/furum %ask]))))
+  ==
+::
+::  an invoice asked for: the mint's quote, the invoice sent to the payer
+::  under its nonce, then the quote asked after until it is paid; paid,
+::  our outputs for the price, kept before the mint is asked to sign them.
+::  Another quote's answer is let go
+::
+++  test-pay-invoice
+  =/  exp  (add now ~h1)
+  =/  q  |=([id=@t st=@t] (pairs:enjs:format ~[['quote' s+id] ['request' s+'lnbc1'] ['state' s+st] ['expiry' (numb:enjs:format (unm:chrono:userlib exp))]]))
+  =/  t0  (pay-run [%quote ~])
+  =/  t1  (feed:ft a-world:ft t0 (mint-says 200 (q 'q1' 'UNPAID')))
+  ::  where the payer keeps furum: the prefs, then the directory
+  =/  t1  (nones 2 t1)
+  =/  t2  (feed:ft a-world:ft t1 (mint-says 200 (q 'q0' 'PAID')))
+  =/  t3  (feed:ft a-world:ft t2 (mint-says 200 (q 'q1' 'UNPAID')))
+  =/  t4  (feed:ft a-world:ft t3 (poke *from:fiber:nexus [[/ %timer-wake] !>(/wait)]))
+  =/  t5  (feed:ft a-world:ft t4 (mint-says 200 (q 'q1' 'PAID')))
+  =/  t6  (feed:ft a-world:ft (feed:ft a-world:ft t5 (mint-says 200 keysets-json)) (mint-says 200 keys-json))
+  =/  p6  (pay-of t6)
+  ;:  weld
+    (expect-eq !>([%invoice 'q1' 'lnbc1' (from-unix:chrono:userlib (unm:chrono:userlib exp))]) !>(step:(pay-of t1)))
+    %+  expect-eq  !>(`(list *)`~[[%pay %b 'n1' %invoice 'lnbc1' 100 (from-unix:chrono:userlib (unm:chrono:userlib exp))]])
+      !>((turn (pokes:ft t1 [/furum %msg]) tail))
+    (expect-eq !>(2) !>((lent (asked t3))))
+    (expect-eq !>(%invoice) !>(-.step:(pay-of t3)))
+    ?>  ?=(%minting -.step.p6)
+    (expect-eq !>(~[4 32 64]) !>((sort (turn outs.step.p6 |=(o=out:ca amount.o)) lth)))
+  ==
+::
+::  a withdrawal: its proofs out of the wallet first; the mint says they
+::  are unspent, so the melt goes, with our blank outputs; paid, its
+::  change is ours. Refused, with its proofs still unspent, they come
+::  back; pending, it is waited on
+::
+++  test-pay-melt
+  =/  ps=(list cashu-proof)  ~[[64 '00ab' 's1' '02aa'] [64 '00ab' 's2' '02bb']]
+  =/  outs  (new-outs:ca ~[1 1] '00ab' 9)
+  =/  ys  (turn ps |=(c=cashu-proof (proof-y:ca secret.c)))
+  =/  st  |=(v=@t (pairs:enjs:format ~[['states' [%a (turn ys |=(y=@t (pairs:enjs:format ~[['Y' s+y] ['state' s+v]])))]]]))
+  =/  t0  (pay-run [%melting 'q9' ps the-keys outs])
+  =/  spent  (feed:ft a-world:ft t0 (poke *from:fiber:nexus [[/furum %done] !>(`(unit deny)`~)]))
+  =/  t2  (feed:ft a-world:ft spent (mint-says 200 (st 'UNSPENT')))
+  =/  change  (pairs:enjs:format ~[['quote' s+'q9'] ['state' s+'PAID'] ['change' [%a ~[(sig (snag 0 outs))]]]])
+  =/  paid  (feed:ft a-world:ft t2 (mint-says 200 change))
+  =/  refused  (feed:ft a-world:ft (feed:ft a-world:ft t2 (mint-says 400 (j '{"detail":"no route"}'))) (mint-says 200 (st 'UNSPENT')))
+  =/  pending  (feed:ft a-world:ft t2 (mint-says 200 (pairs:enjs:format ~[['quote' s+'q9'] ['state' s+'PENDING']])))
+  ;:  weld
+    %+  expect-eq  !>(`(list [road:tarball *])`~[[(rf 1 / %'main.sig') [%spend %x]]])
+      !>((pokes:ft t0 [/furum %ask]))
+    (expect-eq !>(~) !>((asked t0)))
+    (expect-eq !>((build-checkstate-request:ca ys)) !>((last-body spent)))
+    (expect-eq !>((build-melt-request:ca 'q9' ps (out-reqs:ca outs))) !>((last-body t2)))
+    (expect-eq !>([%done ~[(proof-of (snag 0 outs))]]) !>(step:(pay-of paid)))
+    (expect-eq !>([%failed 'no route' ps]) !>(step:(pay-of refused)))
+    (expect-eq !>(%melting) !>(-.step:(pay-of pending)))
+    %+  expect-eq  !>(`(list *)`~[[/wait (add now ~s10)]])
+      !>((skim (turn (pokes:ft pending [/ %timer-set]) tail) |=(a=* ?=([[%wait ~] *] a))))
+  ==
+::
+::  the writer takes a payment only for a paid board, from a mint it
+::  trusts, worth the price, and at most three at a time from a ship; a
+::  refusal is the payer's answer, under its nonce
+::
+++  test-start-pay
+  =/  card  |=(m=(unit @t) (file [%2 *board-info `[100 ~d30 m]]))
+  =/  three  (as-ball (my ~[[/a [%1 a-pay]] [/c [%1 a-pay]] [/d [%1 a-pay]]]))
+  =/  reads
+    |=  [c=view:nexus live=ball:tarball]
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rf 0 /boards/b/pub %card))  c
+    ?:  =(r (rv 0 /pay))  [%ball *wave:nexus live]
+    [%none ~]
+  =/  tok  |=(n=@ud (en:json:html (pairs:enjs:format ~[['inputs' (j (crip "[\{\"amount\":{(a-co:co n)},\"id\":\"00ab\",\"secret\":\"s\",\"C\":\"02\"}]"))]])))
+  =/  pay-by
+    |=  [a=action c=view:nexus live=ball:tarball]
+    %^  serve  10
+      %^  feed:ft  a-world:ft  writer
+      (poke *from:fiber:nexus [[/furum %op] !>([%from ~nec [/furum %msg] [%act a]])])
+    (reads c live)
+  =/  answer
+    |=  t=trail:ft
+    %+  murn  (made-files t)
+    |=  [r=road:tarball n=*]
+    ?.  ?=([%| @ %& [%outbox ~] @] r)  ~
+    `n
+  =/  good  (pay-by [%submit-payment %b 'http://m/' (tok 128) 'n1'] (card `'http://m') *ball:tarball)
+  =/  made-pay
+    %+  murn  (made-files good)
+    |=  [r=road:tarball n=*]
+    ?.  ?=([%| @ %& [%pay ~] @] r)  ~
+    `n
+  =/  pays
+    |=  t=trail:ft
+    (murn (made-files t) |=([r=road:tarball *] ?.(?=([%| @ %& [%pay ~] @] r) ~ `r)))
+  ;:  weld
+    %+  expect-eq
+      !>(`(list *)`~[[%1 [~nec %b 'n1' 'http://m' 100 ~d30 %swap (j (crip "[\{\"amount\":128,\"id\":\"00ab\",\"secret\":\"s\",\"C\":\"02\"}]"))]]])
+      !>(made-pay)
+    ::  named for the payer and its nonce, so an ask sent twice is one
+    %+  expect-eq  !>(~[(rf 0 /pay (crip ((x-co:co 16) (end [3 8] (sham [~nec 'n1'])))))])
+      !>(`(list road:tarball)`(pays good))
+    ::  a token worth the price exactly will do
+    %+  expect-eq  !>(1)
+      !>((lent (pays (pay-by [%submit-payment %b 'http://m' (tok 100) 'n1'] (card `'http://m') *ball:tarball))))
+    %+  expect-eq  !>(`(list *)`~[[~nec %pay %b 'n1' %failed 'the token is worth less than the price']])
+      !>((answer (pay-by [%submit-payment %b 'http://m' (tok 99) 'n1'] (card `'http://m') *ball:tarball)))
+    %+  expect-eq  !>(`(list *)`~[[~nec %pay %b 'n1' %failed 'this board takes no ecash from that mint']])
+      !>((answer (pay-by [%submit-payment %b 'http://evil' (tok 128) 'n1'] (card `'http://m') *ball:tarball)))
+    %+  expect-eq  !>(`(list *)`~[[~nec %pay %b 'n1' %failed 'this board is free']])
+      !>((answer (pay-by [%submit-payment %b 'http://m' (tok 128) 'n1'] (file [%2 *board-info ~]) *ball:tarball)))
+    %+  expect-eq  !>(`(list *)`~[[~nec %pay %b 'n1' %failed 'three payments are already under way; wait for one to finish']])
+      !>((answer (pay-by [%submit-payment %b 'http://m' (tok 128) 'n1'] (card `'http://m') three)))
+    %+  expect-eq  !>(`(list *)`~[[~nec %pay %b 'n2' %failed 'this board takes no Lightning: it names no mint']])
+      !>((answer (pay-by [%request-lightning-invoice %b 'n2'] (card ~) *ball:tarball)))
+    ::  a withdrawal is the host's
+    %+  expect-eq  !>(`(list *)`~[[~nec %note '~zod refused your change' 'only the host withdraws' ~ ~]])
+      !>((answer (pay-by [%melt-to-lightning %b 'http://m' 'lnbc1'] (card `'http://m') *ball:tarball)))
+  ==
+::
+::  the host withdraws only from a mint its board's wallet holds proofs
+::  from, and one withdrawal at a time
+::
+++  test-start-melt
+  =/  melt
+    |=  [mint=@t live=ball:tarball]
+    =/  t
+      %^  serve  10
+        %^  feed:ft  a-world:ft  writer
+        (poke *from:fiber:nexus [[/furum %ask] !>([%act ~zod %melt-to-lightning %b mint 'lnbc1'])])
+      |=  r=road:tarball
+      ^-  view:nexus
+      ?:  =(r (rf 0 /boards/b/pub %card))  (file [%2 *board-info `[100 ~d30 `'http://m']])
+      ?:  =(r (rf 0 /wallets %b))  (file [%1 (my ~[['http://m' ~[[64 '00ab' 's1' '02aa']]]])])
+      ?:  =(r (rv 0 /pay))  [%ball *wave:nexus live]
+      [%none ~]
+    :-  (turn (pokes:ft t [/furum %done]) tail)
+    (murn (made-files t) |=([r=road:tarball n=*] ?.(?=([%| @ %& [%pay ~] @] r) ~ `n)))
+  =/  under-way  (as-ball (my ~[[/a [%1 =/(p a-pay p(who ~zod, step [%melt 'lnbc0']))]]]))
+  ::  what doesn't count: another board's withdrawal, a payer's payment
+  ::  for this board, our own that has finished
+  =/  one  |=(q=pay (as-ball (my ~[[/a [%1 q]]])))
+  =/  q  a-pay
+  =/  others
+    :~  (one q(who ~zod, name %c, step [%melt 'x']))
+        (one q(who ~nec, step [%quote ~]))
+        (one q(who ~zod, step [%done ~]))
+    ==
+  ;:  weld
+    %+  expect-eq  !>(~[1 1 1])
+      !>((turn others |=(l=ball:tarball (lent +:(melt 'http://m' l)))))
+    %+  expect-eq  !>([`(list *)`~[~] `(list *)`~[[%1 [~zod %b '' 'http://m' 0 ~s0 %melt 'lnbc1']]]])
+      !>((melt 'http://m/' *ball:tarball))
+    %+  expect-eq  !>([`(list *)`~[`[400 'the wallet holds nothing from that mint']] `(list *)`~])
+      !>((melt 'http://other' *ball:tarball))
+    %+  expect-eq  !>([`(list *)`~[`[409 'a withdrawal from this board is under way']] `(list *)`~])
+      !>((melt 'http://m' under-way))
+  ==
+::
+::  a finished payment: its proofs into the board's wallet, kept with
+::  every version; its grub culled; the payer's access from when its last
+::  runs out, and word of it. A wallet that won't read is never written
+::  over, and the payment waits
+::
+++  test-settle
+  =/  got=(list cashu-proof)  ~[[64 '00ab' 's1' '02aa']]
+  =/  brd=board
+    =|  b=board
+    b(name.info %b, host.info ~zod, payment `[100 ~d30 `'http://m'])
+  =/  until  (add now ~d35)
+  =/  reads
+    |=  wallet=view:nexus
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rf 0 /pay %x))  (file [%1 =/(p a-pay p(step [%done got]))])
+    ?:  =(r (rf 0 /wallets %b))  wallet
+    ?:  =(r (rf 0 /members %b))  (file [%1 (my ~[[~nec (add now ~d5)]])])
+    ?:  =(r (rv 0 /boards/b))  [%ball *wave:nexus (as-ball (grubs:fb brd))]
+    [%none ~]
+  =/  settle
+    |=  wallet=view:nexus
+    =/  t
+      %^  serve  40
+        (feed:ft a-world:ft writer (poke *from:fiber:nexus [[/furum %op] !>([%settle %x])]))
+      (reads wallet)
+    (serve 40 (gone t) (reads wallet))
+  =/  t  (settle [%none ~])
+  =/  bad  (settle (file 'garbage'))
+  =/  wallets
+    %+  murn  darts.t
+    |=  d=dart:nexus
+    ?.  ?=([%node * * %make * * %| *] d)  ~
+    ?.  =(road.d (rf 0 /wallets %b))  ~
+    `[gain.load.d q.bask.p.make.load.d]
+  =/  culls  |=(t=trail:ft (murn darts.t |=(d=dart:nexus ?.(?=([%node * * %cull *] d) ~ `road.d))))
+  ;:  weld
+    (expect-eq !>(`(list [? *])`~[[& [%1 (my ~[['http://m' got]])]]]) !>(wallets))
+    (expect-eq !>(%.y) !>((lien (culls t) |=(r=road:tarball =(r (rf 0 /pay %x))))))
+    %+  expect-eq  !>(`(list *)`~[[%1 (my ~[[~nec until]])]])
+      !>((murn (made-files t) |=([r=road:tarball n=*] ?.(=(r (rf 0 /members %b)) ~ `n))))
+    %+  expect-eq  !>(`(list *)`~[[~nec %pay %b 'n1' %paid until]])
+      !>((murn (made-files t) |=([r=road:tarball n=*] ?.(?=([%| @ %& [%outbox ~] @] r) ~ `n))))
+    (expect-eq !>(%.n) !>((lien (culls bad) |=(r=road:tarball =(r (rf 0 /pay %x))))))
+  ==
+::
+::  a host's word on a payment we made is kept under its nonce, and only
+::  from the host we paid
+::
+++  test-take-pay
+  =/  word
+    |=  [src=@p name=@tas]
+    %^  serve  4
+      %^  feed:ft  a-world:ft  writer
+      (poke *from:fiber:nexus [[/furum %op] !>([%from src [/furum %msg] [%pay name 'n1' %paid ~2026.2.1]])])
+    |=  r=road:tarball
+    ?:  =(r (rf 0 / %payments))  (file [%1 (my ~[['n1' [~bus %b now %asked |]]])])
+    [%none ~]
+  =/  kept
+    |=  t=trail:ft
+    (murn (made-files t) |=([r=road:tarball n=*] ?.(=(r (rf 0 / %payments)) ~ `n)))
+  ;:  weld
+    %+  expect-eq  !>(`(list *)`~[[%1 (my ~[['n1' [~bus %b now %paid ~2026.2.1]]])]])
+      !>((kept (word ~bus %b)))
+    (expect-eq !>(~) !>((kept (word ~nec %b))))
+    (expect-eq !>(~) !>((kept (word ~bus %c))))
+  ==
+::
+::  a withdrawal's proofs leave the board's wallet before it is sent,
+::  and a wallet that won't read is never written over
+::
+++  test-spend
+  =/  ps=(list cashu-proof)  ~[[64 '00ab' 's1' '02aa'] [64 '00ab' 's2' '02bb']]
+  =/  other=cashu-proof  [8 '00ab' 's3' '02cc']
+  =/  spend
+    |=  wallet=view:nexus
+    %^  serve  10
+      (feed:ft a-world:ft writer (poke *from:fiber:nexus [[/furum %ask] !>([%spend %x])]))
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rf 0 /pay %x))  (file [%1 =/(p a-pay p(who ~zod, step [%melting 'q' ps ~ ~]))])
+    ?:  =(r (rf 0 /wallets %b))  wallet
+    [%none ~]
+  =/  t  (spend (file [%1 (my ~[['http://m' (snoc ps other)]])]))
+  =/  bad  (spend (file 'garbage'))
+  ;:  weld
+    %+  expect-eq  !>(`(list *)`~[[%1 (my ~[['http://m' ~[other]]])]])
+      !>((murn (made-files t) |=([r=road:tarball n=*] ?.(=(r (rf 0 /wallets %b)) ~ `n))))
+    (expect-eq !>(`(list *)`~[~]) !>((turn (pokes:ft t [/furum %done]) tail)))
+    (expect-eq !>(`(list *)`~[`[500 'unreadable: wallet']]) !>((turn (pokes:ft bad [/furum %done]) tail)))
+    (expect-eq !>(~) !>((murn (made-files bad) |=([r=road:tarball n=*] ?.(=(r (rf 0 /wallets %b)) ~ `n)))))
+  ==
+::
+::  a payment we make is kept under its nonce, asked for; those a week
+::  old go
+::
+++  test-paying
+  =/  old  (sub now ~d7)
+  =/  t
+    %^  serve  4
+      (feed:ft a-world:ft writer (poke *from:fiber:nexus [[/furum %op] !>([%paying ~bus %b 'n3' &])]))
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rf 0 / %payments))
+      (file [%1 (my ~[['n1' [~bus %b old %asked |]] ['n2' [~bus %b `@da`+(old) %paid now]]])])
+    [%none ~]
+  %+  expect-eq
+    !>(`(list *)`~[[%1 (my ~[['n2' [~bus %b `@da`+(old) %paid now]] ['n3' [~bus %b now %asked &]]])]])
+  !>((murn (made-files t) |=([r=road:tarball n=*] ?.(=(r (rf 0 / %payments)) ~ `n))))
+::
+::  the edges of a payment: a token worth only the mint's fee fails, and
+::  a signed answer counts only as a success whose every signature makes
+::  a proof; a refusal, whatever its body, and a short answer are checked
+::  with the mint again
+::
+++  test-pay-edges
+  =/  one  (j '[{"amount":1,"id":"00ab","secret":"s1","C":"02aa"}]')
+  =/  fee  (feed:ft a-world:ft (feed:ft a-world:ft (pay-run [%swap one]) (mint-says 200 keysets-json)) (mint-says 200 keys-json))
+  =/  outs  (new-outs:ca ~[1 2] '00ab' 9)
+  =/  none  (mint-says 200 (j '{"outputs":[],"signatures":[]}'))
+  =/  t1  (feed:ft a-world:ft (pay-run [%swapping two-proofs the-keys outs]) none)
+  ::  a refusal that carries signatures anyway
+  =/  refused  (feed:ft a-world:ft t1 (mint-says 400 (pairs:enjs:format ~[['signatures' [%a (turn outs sig)]]])))
+  ::  a signature on an amount the keyset has no key for
+  =/  odd  (pairs:enjs:format ~[['amount' n+'3'] ['id' s+'00ab'] ['C_' s+'02aa']])
+  =/  short  (feed:ft a-world:ft t1 (mint-says 200 (pairs:enjs:format ~[['signatures' [%a ~[(sig (snag 0 outs)) odd]]]])))
+  ;:  weld
+    (expect-eq !>([%failed 'the token is worth no more than the mint fee' ~]) !>(step:(pay-of fee)))
+    (expect-eq !>(%swapping) !>(-.step:(pay-of refused)))
+    (expect-eq !>(['POST' '/v1/restore']) !>((rear (asked refused))))
+    (expect-eq !>(%swapping) !>(-.step:(pay-of short)))
+    (expect-eq !>(['POST' '/v1/restore']) !>((rear (asked short))))
+  ==
+::
+::  an invoice is waited on until its expiry, not past it; and a 300 is
+::  no success, so it is taken as it comes rather than checked
+::
+++  test-pay-expiry
+  =/  q  |=(st=@t (pairs:enjs:format ~[['quote' s+'q1'] ['request' s+'lnbc1'] ['state' s+st] ['expiry' ~]]))
+  =/  run
+    |=  e=@da
+    =/  t  (nones 2 (pay-run [%invoice 'q1' 'lnbc1' e]))
+    (feed:ft a-world:ft t (mint-says 200 (q 'UNPAID')))
+  =/  moved  (feed:ft a-world:ft (feed:ft a-world:ft (pay-run [%swap two-proofs]) (mint-says 200 keysets-json)) (mint-says 300 keysets-json))
+  ;:  weld
+    (expect-eq !>(%invoice) !>(-.step:(pay-of (run now))))
+    (expect-eq !>([%failed 'the invoice ran out unpaid' ~]) !>(step:(pay-of (run (sub now ~s1)))))
+    ::  taken, and no keys in it: tried again later
+    (expect-eq !>(%swap) !>(-.step:(pay-of moved)))
+    %+  expect-eq  !>(`(list *)`~[[/wait (add now ~s15)]])
+      !>((skim (turn (pokes:ft moved [/ %timer-set]) tail) |=(a=* ?=([[%wait ~] *] a))))
+  ==
+::
+::  a melt the mint holds pending is asked after until it says: pending
+::  again, it waits on; paid, its change is ours; unpaid with its proofs
+::  unspent, they come back. A melt the mint doesn't answer about is never
+::  given up on
+::
+++  test-melt-wait
+  =/  ps=(list cashu-proof)  ~[[64 '00ab' 's1' '02aa'] [64 '00ab' 's2' '02bb']]
+  =/  outs  (new-outs:ca ~[1 1] '00ab' 9)
+  =/  ys  (turn ps |=(c=cashu-proof (proof-y:ca secret.c)))
+  =/  st  |=(v=@t (pairs:enjs:format ~[['states' [%a (turn ys |=(y=@t (pairs:enjs:format ~[['Y' s+y] ['state' s+v]])))]]]))
+  =/  melt  |=(v=@t (pairs:enjs:format ~[['quote' s+'q9'] ['state' s+v]]))
+  =/  wake  (poke *from:fiber:nexus [[/ %timer-wake] !>(/wait)])
+  =/  t0  (pay-run [%melting 'q9' ps the-keys outs])
+  =/  spent  (feed:ft a-world:ft t0 (poke *from:fiber:nexus [[/furum %done] !>(`(unit deny)`~)]))
+  =/  waiting  (feed:ft a-world:ft spent (mint-says 200 (st 'PENDING')))
+  =/  again  (feed:ft a-world:ft (feed:ft a-world:ft waiting wake) (mint-says 200 (melt 'PENDING')))
+  =/  paid  (feed:ft a-world:ft (feed:ft a-world:ft again wake) (mint-says 200 (melt 'PAID')))
+  =/  unpaid  (feed:ft a-world:ft (feed:ft a-world:ft waiting wake) (mint-says 200 (melt 'UNPAID')))
+  =/  back  (feed:ft a-world:ft unpaid (mint-says 200 (st 'UNSPENT')))
+  =/  gone  (feed:ft a-world:ft unpaid (mint-says 200 (st 'SPENT')))
+  =/  silent  (feed:ft a-world:ft spent (mint-says 500 (j '{"detail":"down"}')))
+  ;:  weld
+    (expect-eq !>(['GET' '/v1/melt/quote/bolt11/q9']) !>((rear (asked again))))
+    (expect-eq !>(%melting) !>(-.step:(pay-of again)))
+    ::  paid with no change in its answer: the change is restored
+    (expect-eq !>(['POST' '/v1/restore']) !>((rear (asked paid))))
+    (expect-eq !>([%failed 'the Lightning payment failed' ps]) !>(step:(pay-of back)))
+    (expect-eq !>(['POST' '/v1/restore']) !>((rear (asked gone))))
+    (expect-eq !>(%melting) !>(-.step:(pay-of silent)))
+    %+  expect-eq  !>(`(list *)`~[[/wait (add now ~s15)]])
+      !>((skim (turn (pokes:ft silent [/ %timer-set]) tail) |=(a=* ?=([[%wait ~] *] a))))
+  ==
+::
+::  a finished payment is handed to the writer; refused while the writer
+::  waits after a crash, it is handed over again in a minute, and in ten
+::  when the writer kept it
+::
+++  test-pay-settle
+  =/  busy  =/(w a-world:ft w(nack ~[[/furum %ask]]))
+  =/  refused  (run:ft busy ((on-file:app [/pay %x] *blot:tarball) ~) !>([%1 =/(p a-pay p(step [%done ~]))]))
+  =/  kept
+    %^  feed:ft  a-world:ft  (pay-run [%done ~])
+    (poke *from:fiber:nexus [[/furum %done] !>(`(unit deny)`[~ 500 'unreadable: wallet; the payment waits'])])
+  =/  timers
+    |=  t=trail:ft
+    (skim (turn (pokes:ft t [/ %timer-set]) tail) |=(a=* ?=([[%wait ~] *] a)))
+  ;:  weld
+    (expect-eq !>(`(list *)`~[[/wait (add now ~m1)]]) !>((timers refused)))
+    (expect-eq !>(`(list *)`~[[/wait (add now ~m10)]]) !>((timers kept)))
   ==
 --

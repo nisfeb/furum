@@ -164,16 +164,16 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/` holds six suites, 60 tests:
+`tests/nexus/` holds six suites, 84 tests:
 
 | suite | tests | what it owns |
 |---|---|---|
 | `furum-rules` | 10 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check; and who reads a paid board |
 | `furum` | 12 | the Gall suite, unchanged: links, forms, vote targets, paging, threads, orderings |
-| `cashu` | 9 | the Gall suite, unchanged |
+| `cashu` | 17 | the Gall suite, and the wallet and recovery arms payments use (below) |
 | `furum-board` | 9 | a board in the ball, and who hears of an action (below) |
 | `furum-registry` | 2 | the directory's rules: first registrant, curation, admins |
-| `nexus` | 18 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+| `nexus` | 34 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
 
 The Gall desk's libs were copied to `code/lib` with grubbery imports
 (`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
@@ -217,11 +217,39 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-inbox-forwards` | the inbox forwards another ship's poke with the sender the transport names, and ignores a local one |
 | `test-owner-gate` | owner pages are the owner's; the about page is anyone's; a board a guest can't see answers like a missing one; a cross-site form and a wrong method are refused |
 | `test-rise-plan` | the backoff: 1, 2, 4 minutes to an hour, reset after two quiet hours |
+| `test-pay-swap` | ecash in hand: keysets, keys, outputs for the token less the mint's input fee kept before anything is sent, a restore, then the swap; its signatures become proofs, and the writer is asked to settle |
+| `test-pay-stale-answer` | a mint's answer to an earlier request (the keysets again) is let go while the keys are awaited; a failure is taken as it comes, and the step waits 15 s and tries again |
+| `test-pay-resumes-by-restore` | a swap resumed after a restart asks the mint what it signed before it swaps: signed, those are the proofs and no second swap goes |
+| `test-pay-refused` | a refused swap fails with the mint's reason only after a second restore finds nothing |
+| `test-pay-invoice` | an invoice: the mint's quote, the invoice to the payer under its nonce, the quote asked after every 5 s (another quote's answer let go); paid, outputs for the price kept before the mint signs |
+| `test-pay-melt` | a withdrawal's proofs leave the wallet first; checkstate says unspent, so the melt goes with blank outputs; paid, the change is ours; refused and still unspent, the proofs come back; pending, it waits |
+| `test-start-pay` | a payment only for a paid board, from a trusted mint, worth the price, three at a time per ship; a refusal goes back as the payer's answer under its nonce; a withdrawal is the host's |
+| `test-settle` | a finished payment's proofs go into the wallet with gain on; its grub is culled; the payer's access runs from when its last runs out; it hears so. A wallet that won't read is never written over |
+| `test-take-pay` | a host's word on our payment is kept under its nonce, only from the host we paid and about the board we paid for |
+| `test-start-melt` | the host withdraws only from a mint the board's wallet holds proofs from, one withdrawal per board at a time (another board's, a payer's or a finished one doesn't count) |
+| `test-spend` | a withdrawal's proofs leave the wallet before it is sent; a wallet that won't read is never written over |
+| `test-paying` | a payment we make is kept under its nonce; those a week old go |
+| `test-pay-edges` | a token worth only the mint's fee fails; a refusal carrying signatures, or an answer with a signature no key covers, is checked with the mint again |
+| `test-pay-expiry` | an invoice is waited on until its expiry, not past it; a 300 is taken as it comes, not checked |
+| `test-melt-wait` | a pending melt is asked after until paid (change restored) or unpaid (unspent proofs back); a melt the mint doesn't answer about is never given up on |
+| `test-pay-settle` | a finished payment is handed to the writer again in a minute when refused, in ten when kept |
 
 `furum-rules` gained `test-group` (a paid board's group is its moderators
 and the members whose time hasn't run out; the next expiry is the soonest
 still to come) and `test-open-paths` (every ship reads each board's
 `pub/` and a free board's `content/`, never a paid board's content).
+
+`cashu` gained the arms payments use: `test-keysets-and-fees` (the active
+sat keyset; input fees summed per thousand and rounded up, by full or short
+keyset id), `test-restore` (a restore answer pairs outputs with signatures
+by B_; one without its outputs is no restore answer), `test-outputs-to-proofs`
+(our outputs unblind to proofs a mint would take; a melt's change and its
+blank-output count), `test-checkstate` (Y is NUT-00's hash_to_curve; the
+verdict on a melt's proofs is the furthest any got), `test-token-inputs`
+(whole proofs only, 1 to 100), `test-select-proofs` (largest first, until
+they pay the need and their own fee) and `test-nutshell-keys` (a nutshell
+0.21 mint's own keys answer parses whole), and `test-answer-checks`
+(each mint call takes only an answer naming what it asked).
 
 `furum-registry` holds `test-register` (a name is its first registrant's;
 retitling keeps tags and curation; only the host unregisters; install
@@ -231,14 +259,38 @@ admins curate; only the registry names admins).
 The request routes and the network are checked live, not by unit tests:
 `scripts/api-matrix.py <url> <jar> <~ship>` works a fresh board through
 every host action and page, as owner and guest, with each refusal the
-routes promise (86 checks), and deletes it again.
+routes promise (95 checks), and deletes it again.
 `scripts/xship.py <url-a> <jar-a> <~a> <url-b> <jar-b> <~b>` runs two
 ships at each other, both ways (58 checks): the directory, following,
 posts, comments, replies, votes, moderation, notes, and a refusal told
 back. `scripts/access.py` (same arguments, host first) checks who may
 read a paid board (29 checks): the weir's grants, a stranger's paywall,
 access given and taken, a moderator, and a one-minute trial the sweeper
-ends.
+ends. `scripts/pay.py` (the same, then the mint's URL and the virtualenv
+nutshell is installed in) pays for a board against a local test mint,
+nutshell with its FakeWallet (25 checks): Lightning, a lapse, an ecash
+renewal, a token spent twice, a withdrawal the mint refuses and one it
+pays, the host's furum reloading under each payment.
+
+The test mint runs from a scratch directory, never a real mint:
+
+```sh
+uv venv -p 3.12 .venv
+uv pip install -p .venv cashu 'marshmallow<4' 'limits<4'   # 0.21 won't start without the pins
+cat > .env <<EOF
+MINT_BACKEND_BOLT11_SAT=FakeWallet
+MINT_PRIVATE_KEY=any-test-string
+MINT_LISTEN_HOST=127.0.0.1
+MINT_LISTEN_PORT=3338
+MINT_DATABASE=data/mint
+EOF
+setsid nohup .venv/bin/mint > mint.log 2>&1 &
+scripts/pay.py <url-host> <jar-host> <~host> <url-payer> <jar-payer> <~payer> http://127.0.0.1:3338 <dir>/.venv
+```
+
+The fake wallet pays every invoice the mint issues, a few seconds on.
+The payer's ecash comes from nutshell's own wallet CLI, in a directory of
+its own under /tmp.
 
 ### Mutation run, phase 1 (2026-09-28, all ops)
 
@@ -334,6 +386,55 @@ all. What survives:
 - **equivalent**, `+sweeper` `lte->lth` at an expiry of exactly now: the
   next look sweeps.
 
+### Mutation run, phase 5 (2026-09-29, all ops)
+
+`--since HEAD` lists 375 mutants. The run took the payment logic, in
+three slices with `--only`: lib/cashu's new arms (90), the writer's
+payment arms (57), and the pay fiber with its mint calls (60). The
+payment pages (`+serve-payment`, `+pay-then`, the mod page's wallet) are
+checked live by `pay.py` and `api-matrix.py`. The cashu slice timed out
+at its 51st mutant, twice, voiding the rest. It wasn't a spin: that
+mutant (`+inputs-sum` refusing every token of 100 proofs or fewer) fails
+four nexus tests whose reports print whole payment states, and together
+they made a report too big for the kit to decode (exit 2, which the
+runner calls a timeout). Its arm was mutated against the cashu suite
+alone (all 13 killed), and so was the rest of the slice.
+
+The real gaps it found:
+- the answer checks (`+is-keys`, `+is-new-quote`) had no tests of their
+  own: `test-answer-checks` now holds each to what a good answer names;
+- a token at exactly the 64 KiB cap, an amount that isn't whole, a proof
+  that names no keyset (`test-token-inputs`, `test-keysets-and-fees`);
+- a token worth exactly the price, and the payment's id being the
+  payer's and its nonce's (so an ask sent twice is one payment);
+- which grubs count as a withdrawal under way (another board's, a
+  payer's, a finished one don't) (`test-start-melt`);
+- a word from our host about another board (`test-take-pay`);
+- `+spend` and `+paying` had no tests (`test-spend`, `test-paying`, the
+  latter with the week's edge);
+- a token worth exactly the mint's fee, a refusal that carries
+  signatures, a short answer (`test-pay-edges`);
+- an invoice at exactly its expiry, and a 300 (`test-pay-expiry`);
+- the whole of `+melt-wait` past its first sleep, and a melt the mint
+  doesn't answer about never being given up on (`test-melt-wait`);
+- `+pay-settle`'s two waits (`test-pay-settle`).
+
+What survives:
+- **equivalent**, `+select-proofs`'s sort `gth->gte`: only the order of
+  equal amounts changes.
+- **equivalent**, `+start-pay`'s nonce read with its branches swapped:
+  both read the nonce.
+- **equivalent**, `+take-response` dropping `(gte code 200)`: a mint
+  sends no 1xx answer.
+- **accepted**, `+pay-retry` `gte->gth` (giving up at the 100th try or
+  the 101st) and `+melt-wait` `lth->lte` (ten-second polls for 30 tries or
+  31): cadence, a day or a minute either way.
+
+One survivor was redundant code, and went: `+start-pay` (and the mod
+page) checked that a withdrawal under way was the host's, but only a
+withdrawal is ever at `%melt` or `%melting`. The second pass killed every
+other mutant in the writer and fiber slices.
+
 ## Not covered
 
 - **The agent**: on-load migrations, HTTP routing, the iris payment state
@@ -402,3 +503,14 @@ was working in the kit repo at the time.
   to the mount but not committed it, so the next plain run still tested
   the mutant: `NOSYNC=1 hoon-test.sh` commits the mount as it stands. Run
   such suites in slices with `--only`.
+- **A "timeout" can be a report too big to read.** `hoon-mutate.py`
+  calls any exit but 0, 1, 3 and 4 a timeout. A mutant whose failing
+  tests print whole fiber states made a report `hoon-test.sh` couldn't
+  decode (it came back as raw bytes, exit 2), so the runner said the ship
+  might be spinning and voided the rest of the slice, every time. Run
+  such a mutant by hand with `NOSYNC=1`, one suite at a time, before
+  calling the ship stuck; mutate its arm against a conf whose `TESTS`
+  holds only the small suite that covers it.
+- **A helper named `test-…` is a test.** The runner runs every arm whose
+  name starts with `test-`, so a fixture called `test-keys` ran, returned
+  a map, and crashed the report. Name fixtures otherwise.

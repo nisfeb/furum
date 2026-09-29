@@ -101,8 +101,9 @@ tests/nexus/…   hoon-test-nexus.conf (DIALECT=grubbery)   scripts/{code-closur
       votes/b<k>             votes on those posts and their comments
       pins  sidebar
   members/<name>             ship -> paid-until (drives the board's usergroup)
-  pay/<nonce>                one payment, its fiber resuming from this state
-  wallet/<mint>/proofs       gained: history is the ledger
+  pay/<id>                   one payment, its fiber resuming from the step it holds
+  wallets/<name>             a board's proofs by mint, gained: history is the ledger
+  payments                   payments this ship made to other hosts' boards, by nonce
   follows/<host>/<name>      one follower fiber per followed board
   cache/<host>/<name>/…      the mirror a follower keeps (content only; re-syncable)
   seen  prefs  limits        read marks, dark mode, post cooldowns
@@ -250,23 +251,46 @@ do.
 
 ### Payments
 
-- **One grub per payment** (`pay/<nonce>`). Its state is the step it is on:
-  keys, swap, quote, check, mint, melt. Its fiber resumes from that state
-  after any restart. That ends the class of bug fixed last round (in-flight
-  payments wiped by reloads, polls killed by a dropped connection) by
-  construction.
-- **Check before redoing.** After a restart mid-swap or mid-melt, ask the
-  mint which proofs are spent (NUT-07 `checkstate`) and recover signatures
-  (NUT-09 `restore`) instead of redoing or forgetting. The Gall version
-  can't.
-- **The wallet** is proof grubs with `gain` on. Every receipt and spend is a
-  version, which is the audit trail and the backup.
-- **Lightning invoices go to the payer's inbox**, not to a subscription path.
-  The payer's ship pokes the host's inbox to ask, and the host pokes the
-  invoice back. Armillary's `docs/channel.md` has the nonce and timeout
-  rules for this.
+- **One grub per payment** (`pay/<id>`, named for the payer and its nonce).
+  Its state is the step it is on: `%swap`, `%swapping`, `%quote`,
+  `%invoice`, `%minting`, `%melt`, `%melting`, then `%done` or `%failed`.
+  A step is written before the request it leads to, and the fiber resumes
+  from it after any restart. That ends the class of bug fixed last round
+  (in-flight payments wiped by reloads, polls killed by a dropped
+  connection) by construction.
+- **Check before redoing.** A swap or a mint first asks the mint for its
+  signatures on our outputs (NUT-09 `restore`). Signed, those are the
+  proofs; otherwise it sends the request, and it fails only when a second
+  restore finds nothing. A melt asks whether its proofs are spent (NUT-07
+  `checkstate`): all unspent, the melt is sent; pending, it waits; spent,
+  it was paid and its change is restored. A melt never gives up, since
+  until the mint says, its proofs may be spent.
+- **A mint's answers come back by fiber, not by request.** Grubbery's iris
+  service pokes the answer to the rail that asked and carries no request
+  id, so a restarted fiber receives its predecessor's answer, and a late
+  one reaches the next request. Every call names what a good answer must
+  hold (the quote id, the keyset id, one signature per output, our Ys), and
+  anything else is let go. A failure names nothing and is taken as it
+  comes; the steps above check before they conclude one.
+- **The wallet** is `wallets/<name>`, proofs by mint, written with `gain`
+  on. Every receipt and spend is a version, which is the audit trail and
+  the backup. Deleting a board leaves its wallet.
+- **The writer settles.** A finished payment's fiber asks the writer to
+  settle it: the proofs go into the wallet, the grub is culled (so it is
+  settled once), then the payer gets access from when its last runs out
+  (or now) through `%grant-paid`, and word of it. A withdrawal's proofs
+  leave the wallet (another ask) before the melt is sent.
+- **The payer's side.** The payer's ship keeps its payments in
+  `payments`, by a nonce it makes. It asks the host's inbox (ecash with the
+  token, or for an invoice); the host answers with `[%pay name nonce view]`
+  messages (an invoice, paid until, failed and why), and the payment's page
+  follows them. Paid, the page asks the payer's follower to look again,
+  and the board opens.
+- **Fees.** A swap's outputs are the token less the mint's input fee
+  (NUT-02 `input_fee_ppk`); the host bears it. A melt sends blank outputs
+  for its change (NUT-08).
 - **Unchanged from last round:** the host's configured mint only (else the
-  known public mints), and the per-ship cap on live invoices.
+  known public mints), and at most three payments under way per ship.
 
 ### The registry
 
@@ -368,7 +392,7 @@ spikes can move them.
 | 2 | host: boards, posts, comments, votes, roles, pins, sidebar, prune, caps, rate limits, the Sail pages, CSRF, public view | L | **done 2026-09-28**: see Phase 2 results |
 | 3 | network: follow by keep, remote writes by inbox, notifications, the registry | L | **done 2026-09-28**: see Phase 3 results |
 | 4 | access: public grants, member groups, moderator groups, revocation | M | **done 2026-09-28**: see Phase 4 results |
-| 5 | payments: payment grubs, wallet, Lightning and ecash, NUT-07/09 recovery, membership sweeper | L | pay, lapse and renew end to end against a test mint (nutshell `FakeWallet`), surviving a reload at every step |
+| 5 | payments: payment grubs, wallet, Lightning and ecash, NUT-07/09 recovery, membership sweeper | L | **done 2026-09-29**: see Phase 5 results |
 | 6 | migration: the 0.6 Gall release (export, payment freeze, banner, redirects), import by scry and by file, re-hosting, verification | M | a copy of the moon's export imports on a fake `~ricsul-bilwyt` stand-in, re-hosted, with every count and every sat matching |
 | 7 | cutover and release: ricsul's forge and `furum.desk` (not stock), then the registry and the moon's boards on `~ricsul-bilwyt`, then the other hosts, then the announcement | S | `~ricsul-bilwyt` runs the nexus; the moon's agent sits suspended; crash rules 7, 8 and 9, api-matrix and xship all pass on the release; the owner has opened the desk to `/public` |
 | 8 | later: MCP tools, live refresh, keen for immutable post revisions, eauth guests | — | as wanted |
@@ -462,6 +486,74 @@ rules.**
     1024 sats up, which would lose those proofs.
 - All fixed with `dum:ag` behind a tested `parse-id`. See
   `docs/hoon-testing.md`.
+
+### Phase 5 results (2026-09-29)
+
+Paying for a board works end to end against a local test mint (nutshell
+0.21 with its FakeWallet, set up as `docs/hoon-testing.md` says).
+`scripts/pay.py` passes all 25 of its checks between ~bus (host) and ~wes
+(payer) in 2 m 26 s, with the host's furum reloaded under each payment.
+`api-matrix.py` (95), `xship.py` (58) and `access.py` (29) still pass,
+and the unit tests are now 84.
+
+- **Lightning.** The payer's page asks its own ship, which asks the host's
+  inbox; the host's pay fiber takes a quote from the board's mint, sends
+  the invoice to the payer's inbox, and asks after the quote every 5 s.
+  The fake wallet pays it; the host mints 100 sats of proofs into the
+  board's wallet and gives access. The payer's page, told so, asks its
+  follower to look again, and the board opens.
+- **Lapse and renewal.** At a price of 100 sats a minute, the sweeper
+  closed the board to the payer when the minute ran out. The payer renewed
+  with an ecash token from the nutshell CLI: the host swapped it (100 sats
+  less the mint's 1-sat input fee) and the board opened again. The same
+  token a second time failed as spent, and the payer's page said why.
+- **Withdrawals.** The host withdrew 50 sats to an invoice on "another
+  node" (one the test signs itself): 199 sats went to 147, the rest came
+  back as change on blank outputs, and every proof left in the wallet is
+  unspent at the mint. A withdrawal the mint refuses (its own invoice,
+  which the fake wallet had paid already) left the wallet as it was, with
+  a note saying why.
+- **Reloads.** Each payment above was made with the host's furum reloaded
+  under it: after the invoice was asked for, while it was waited on, right
+  after the token was sent, and right after the withdrawal was asked for.
+  Each pay grub resumed from its step and came through.
+- **Speed.** A swap now takes about a second from the mint's keys to its
+  signatures; it took 13 to 20 s with the ship blocked (below).
+
+**Found on the way:**
+- **A mint's answers come back by fiber, not by request** (see Payments).
+  The first live run stalled: a reload left a request in flight, its
+  answer reached the restarted fiber, and from then on every call read the
+  answer to the call before it (the keys call got the keysets, then a
+  quote). Every mint call now says what a good answer names.
+- **The Gall app's elliptic-curve multiply took 2.5 s** on a fake ship
+  (an affine double-and-add with a modular inverse at every step). A swap
+  blinds and unblinds one output per power of two, so a payment froze the
+  ship for 13 to 20 s. `+ec-mul` now calls zuse's Jacobian
+  `mul-point-scalar`, 0.1 s, with the same results (the NUT-00 vectors
+  still pass).
+- **Paid is not the same as melted.** The fake wallet pays every invoice
+  its mint issues by itself, and nutshell won't melt an invoice of its own
+  that is paid already ("mint quote already paid"). The script's refused
+  withdrawal uses exactly that; its paid one uses an invoice the test signs
+  with the `bolt11` library.
+- **nutshell 0.21 needs `marshmallow<4` and `limits<4`** to start.
+- **A withdrawal from an empty wallet** was taken and would have retried
+  for hours against a mint that doesn't answer. The writer now refuses it
+  unless the wallet holds proofs from that mint.
+- **Shapes the tests name live in `lib/furum-types`.** A nexus is cast to
+  `nexus:nexus`, which hides its own types from a test (`pay:app` doesn't
+  resolve), so `$pay` and its steps moved there.
+- **Two names shadowed.** An arm named `post` (for the outbox) hid the
+  `post` type from the whole nexus, and a test helper named `http` hid
+  zuse's `http`. The arm is `+mail` now.
+- **`nonce.action` on a fork fails** (`find-fork`) when the face sits at a
+  different axis in each case: `%submit-payment` has its nonce last,
+  `%request-lightning-invoice` second. Each case reads its own.
+- **The kit runs every `test-` arm as a test**, a helper named
+  `test-keys` included. It is `the-keys`.
+- **`fiber-test` answers makes but not culls.** The settle test answers the
+  cull (`%gone`) itself.
 
 ### Phase 4 results (2026-09-28)
 

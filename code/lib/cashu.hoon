@@ -1,4 +1,4 @@
-::  lib/cashu.hoon: Cashu wallet operations (NUT-00/NUT-03/NUT-05)
+::  lib/cashu.hoon: Cashu wallet operations (NUT-00/02/03/04/05/07/08/09)
 ::
 ::  Standard-compliant BDHKE using zuse's jetted secp256k1 operations.
 ::  Implements hash-to-curve, blinding, unblinding per NUT-00 spec.
@@ -140,23 +140,15 @@
   =/  y3  (dif:fop (pro:fop lam (dif:fop x.p1 x3)) y.p1)
   [x3 y3]
 ::
-::  Scalar multiplication via double-and-add
+::  Scalar multiplication: zuse's, in jacobian coordinates, with one
+::  inverse at the end. An affine double-and-add here took 2.5 s a
+::  multiply on a fake ship, zuse's 0.1 s, and every output a payment
+::  blinds or unblinds takes one.
 ::
 ++  ec-mul
   |=  [pt=[x=@ y=@] k=@]
   ^-  [x=@ y=@]
-  =/  res=[x=@ y=@]  pt
-  =/  acc=[x=@ y=@]  pt
-  =/  first=?  &
-  =/  bits=@ud  (met 0 k)
-  =/  idx=@ud  0
-  |-
-  ?:  =(idx bits)  res
-  ?:  =(1 (cut 0 [idx 1] k))
-    ?:  first
-      $(idx +(idx), res acc, acc (ec-add acc acc), first |)
-    $(idx +(idx), res (ec-add res acc), acc (ec-add acc acc))
-  $(idx +(idx), acc (ec-add acc acc))
+  (mul-point-scalar:secp256k1:secp:crypto pt k)
 ::
 ::  -- BDHKE operations --
 ::
@@ -210,17 +202,18 @@
 ++  build-swap-request
   |=  [inputs=json outputs=(list [amount=@ud id=@t b-hex=@t])]
   ^-  json
+  (pairs:enjs:format ~[['inputs' inputs] ['outputs' (outputs-json outputs)]])
+::
+++  outputs-json
+  |=  outputs=(list [amount=@ud id=@t b-hex=@t])
+  ^-  json
+  :-  %a
+  %+  turn  outputs
+  |=  [amount=@ud id=@t b-hex=@t]
   %-  pairs:enjs:format
-  :~  ['inputs' inputs]
-      :-  'outputs'
-      :-  %a
-      %+  turn  outputs
-      |=  [amount=@ud id=@t b-hex=@t]
-      %-  pairs:enjs:format
-      :~  ['amount' (numb:enjs:format amount)]
-          ['id' s+id]
-          ['B_' s+b-hex]
-      ==
+  :~  ['amount' (numb:enjs:format amount)]
+      ['id' s+id]
+      ['B_' s+b-hex]
   ==
 ::
 ::  Parse swap response: extract blinded signatures
@@ -228,10 +221,14 @@
   |=  jon=json
   ^-  (list [amount=@ud id=@t c-hex=@t])
   ?.  ?=([%o *] jon)  ~
-  =/  sigs  (~(get by p.jon) 'signatures')
-  ?~  sigs  ~
-  ?.  ?=([%a *] u.sigs)  ~
-  %+  turn  p.u.sigs
+  (parse-sigs (~(gut by p.jon) 'signatures' ~))
+::  +parse-sigs: a json array of blinded signatures
+::
+++  parse-sigs
+  |=  sigs=json
+  ^-  (list [amount=@ud id=@t c-hex=@t])
+  ?.  ?=([%a *] sigs)  ~
+  %+  turn  p.sigs
   |=  sig=json
   ^-  [amount=@ud id=@t c-hex=@t]
   ?.  ?=([%o *] sig)  [0 '' '']
@@ -300,12 +297,14 @@
     ?:(?=([%n *] u.a) (roll (trip p.u.a) |=([c=@ a=@ud] (add (mul a 10) (sub c '0')))) 0)
   ?:(?=([%n *] u.f) (roll (trip p.u.f) |=([c=@ a=@ud] (add (mul a 10) (sub c '0')))) 0)
 ::
-::  Build melt execution request from stored proofs
+::  Build melt execution request from stored proofs, with blank outputs
+::  for the change (NUT-08)
 ++  build-melt-request
-  |=  [quote-id=@t proofs=(list [amount=@ud id=@t secret=@t c=@t])]
+  |=  [quote-id=@t proofs=(list [amount=@ud id=@t secret=@t c=@t]) outputs=(list [amount=@ud id=@t b-hex=@t])]
   ^-  json
   %-  pairs:enjs:format
   :~  ['quote' s+quote-id]
+      ['outputs' (outputs-json outputs)]
       :-  'inputs'
       :-  %a
       %+  turn  proofs
@@ -327,6 +326,14 @@
   ?~  st  ~
   =/  state=@t  ?:(?=([%s *] u.st) p.u.st '')
   `[state =(state 'PAID')]
+::
+::  +parse-melt-change: the change a paid melt returns on our blank
+::  outputs (NUT-08), in their order
+++  parse-melt-change
+  |=  jon=json
+  ^-  (list [amount=@ud id=@t c-hex=@t])
+  ?.  ?=([%o *] jon)  ~
+  (parse-sigs (~(gut by p.jon) 'change' ~))
 ::
 ::  -- NUT-04 mint (Lightning invoice) --
 ::
@@ -396,6 +403,301 @@
   ?.  &(?=(^ amt) ?=([%s *] v))  acc
   ?:  =(0 u.amt)  acc
   (~(put by acc) u.amt p.v)
+::
+::  -- NUT-02 keysets and fees --
+::
++$  keyset  [id=@t unit=@t active=? fee=@ud]
+::
+::  Parse /v1/keysets: each keyset's id, unit, whether it is active, and
+::  its input fee in parts per thousand
+++  parse-keysets
+  |=  jon=json
+  ^-  (list keyset)
+  ?.  ?=([%o *] jon)  ~
+  =/  ks  (~(get by p.jon) 'keysets')
+  ?.  ?=([~ %a *] ks)  ~
+  %+  murn  p.u.ks
+  |=  k=json
+  ^-  (unit keyset)
+  ?.  ?=([%o *] k)  ~
+  =/  id  (~(get by p.k) 'id')
+  =/  un  (~(get by p.k) 'unit')
+  ?.  &(?=([~ %s *] id) ?=([~ %s *] un))  ~
+  =/  fe  (~(get by p.k) 'input_fee_ppk')
+  :-  ~
+  :^  p.u.id  p.u.un  =([~ %b %.y] (~(get by p.k) 'active'))
+  ?.(?=([~ %n *] fe) 0 (fall (rush p.u.fe dem) 0))
+::
+::  +active-sat: the keyset a mint signs new sat outputs under
+++  active-sat
+  |=  ks=(list keyset)
+  ^-  (unit keyset)
+  =/  a  (skim ks |=(k=keyset &(active.k =('sat' unit.k))))
+  ?~(a ~ `i.a)
+::
+::  +input-fee: what a mint keeps for spending proofs of these keysets:
+::  their fees per thousand, summed and rounded up. A proof may name its
+::  keyset by the first bytes of the id alone (a short id).
+++  input-fee
+  |=  [ks=(list keyset) ids=(list @t)]
+  ^-  @ud
+  =/  ppk=@ud
+    %+  roll  ids
+    |=  [i=@t acc=@ud]
+    =/  k  (skim ks |=(k=keyset &(!=('' i) =(i (end [3 (met 3 i)] id.k)))))
+    ?~(k acc (add acc fee.i.k))
+  (div (add ppk 999) 1.000)
+::
+::  -- NUT-09 restore --
+::
+::  Ask the mint again for its signatures on outputs it may have signed
+++  build-restore-request
+  |=  outputs=(list [amount=@ud id=@t b-hex=@t])
+  ^-  json
+  (pairs:enjs:format ~[['outputs' (outputs-json outputs)]])
+::
+::  +parse-restore: the signatures the mint holds, by the B_ each signs;
+::  ~ when this is no restore answer (one without its outputs)
+++  parse-restore
+  |=  jon=json
+  ^-  (unit (map @t [amount=@ud id=@t c-hex=@t]))
+  ?.  ?=([%o *] jon)  ~
+  =/  os  (~(get by p.jon) 'outputs')
+  ?.  ?=([~ %a *] os)  ~
+  =/  sigs  (parse-sigs (~(gut by p.jon) 'signatures' ~))
+  ?.  =((lent p.u.os) (lent sigs))  ~
+  =|  acc=(map @t [amount=@ud id=@t c-hex=@t])
+  =/  bs=(list json)  p.u.os
+  |-
+  ?~  bs  `acc
+  ?~  sigs  `acc
+  =/  b  ?.(?=([%o *] i.bs) ~ (~(get by p.i.bs) 'B_'))
+  =?  acc  ?=([~ %s *] b)  (~(put by acc) p.u.b i.sigs)
+  $(bs t.bs, sigs t.sigs)
+::
+::  -- NUT-07 checkstate --
+::
+::  +proof-y: the point a mint files a proof's state under, Y = hash_to_curve(secret)
+++  proof-y
+  |=  secret=@t
+  ^-  @t
+  (point-to-hex (hash-to-curve secret))
+::
+++  build-checkstate-request
+  |=  ys=(list @t)
+  ^-  json
+  (pairs:enjs:format ~[['Ys' [%a (turn ys |=(y=@t s+y))]]])
+::
+::  +parse-checkstate: each Y's state (UNSPENT, PENDING or SPENT); ~ when
+::  this is no checkstate answer
+++  parse-checkstate
+  |=  jon=json
+  ^-  (unit (map @t @t))
+  ?.  ?=([%o *] jon)  ~
+  =/  st  (~(get by p.jon) 'states')
+  ?.  ?=([~ %a *] st)  ~
+  :-  ~
+  %-  malt
+  %+  murn  p.u.st
+  |=  s=json
+  ^-  (unit [@t @t])
+  ?.  ?=([%o *] s)  ~
+  =/  y  (~(get by p.s) 'Y')
+  =/  v  (~(get by p.s) 'state')
+  ?.  &(?=([~ %s *] y) ?=([~ %s *] v))  ~
+  `[p.u.y p.u.v]
+::
+::  +verdict: what a checkstate answer says of all our proofs together:
+::  SPENT if any is, else PENDING if any is, else UNSPENT when it names
+::  every one; ~ when it doesn't
+++  verdict
+  |=  [states=(map @t @t) n=@ud]
+  ^-  (unit @t)
+  =/  vs=(list @t)  ~(val by states)
+  ?:  (lien vs |=(v=@t =('SPENT' v)))  `'SPENT'
+  ?:  (lien vs |=(v=@t =('PENDING' v)))  `'PENDING'
+  ?.  &(=(n (lent vs)) (levy vs |=(v=@t =('UNSPENT' v))))  ~
+  `'UNSPENT'
+::
+::  -- telling a mint's answers apart --
+::
+::  A fiber takes a mint's answers in the order they come, and one to an
+::  earlier request (sent before a restart, or given up on) can come
+::  first. A good answer names what it answers; these say whether it
+::  answers ours.
+::
+++  obj  |=(j=json ^-((map @t json) ?.(?=([%o *] j) ~ p.j)))
+::
+::  +is-keysets: a /v1/keysets answer: keysets without their keys
+++  is-keysets
+  |=  j=json
+  ^-  ?
+  =/  ks  (~(get by (obj j)) 'keysets')
+  ?.  ?=([~ %a *] ks)  |
+  (levy p.u.ks |=(k=json !(~(has by (obj k)) 'keys')))
+::
+::  +is-keys: a /v1/keys answer for this keyset
+++  is-keys
+  |=  [j=json kid=@t]
+  ^-  ?
+  =/  ks  (~(get by (obj j)) 'keysets')
+  ?.  ?=([~ %a ^] ks)  |
+  &(=([~ %s kid] (~(get by (obj i.p.u.ks)) 'id')) ?=(^ (parse-keys j)))
+::
+::  +is-quote: an answer about this quote (its state, or a melt of it)
+++  is-quote
+  |=  [j=json q=@t]
+  ^-  ?
+  =([~ %s q] (~(get by (obj j)) 'quote'))
+::
+::  +is-new-quote: a new quote, and for a melt, of the invoice asked
+::  about when the mint says which
+++  is-new-quote
+  |=  [j=json invoice=(unit @t)]
+  ^-  ?
+  =/  o  (obj j)
+  ?.  ?=([~ %s *] (~(get by o) 'quote'))  |
+  =/  r  (~(get by o) 'request')
+  ?~  invoice  ?=([~ %s *] r)
+  |(?=(~ r) =([~ %s u.invoice] r))
+::
+::  +is-sigs: a swap's or a mint's signatures, one per output (and not
+::  a restore answer, which names its outputs)
+++  is-sigs
+  |=  [j=json n=@ud]
+  ^-  ?
+  =/  o  (obj j)
+  ?:  (~(has by o) 'outputs')  |
+  ?.  ?=([~ %a *] (~(get by o) 'signatures'))  |
+  =(n (lent (parse-swap-response j)))
+::
+::  +is-restore: a restore answer about our outputs only
+++  is-restore
+  |=  [j=json outs=(list out)]
+  ^-  ?
+  ?~  got=(parse-restore j)  |
+  =/  bs  (silt (turn outs |=(o=out b.o)))
+  (levy ~(tap in ~(key by u.got)) |=(b=@t (~(has in bs) b)))
+::
+::  +is-states: a checkstate answer about these proofs, by their Ys
+++  is-states
+  |=  [j=json ys=(set @t)]
+  ^-  ?
+  ?~  st=(parse-checkstate j)  |
+  =(ys ~(key by u.st))
+::
+::  -- the wallet --
+::
+::  an output we blinded, kept until the mint signs it: its secret and
+::  blinding factor turn the signature into a proof
++$  out  [amount=@ud id=@t secret=@t r=@ b=@t]
++$  proof  [amount=@ud id=@t secret=@t c=@t]
+::
+::  +token-inputs: the proofs a payer's token hands over, as the paywall
+::  sends them ({"inputs": [...]}), each with its amount, keyset id,
+::  secret and C; with their sum and keyset ids. ~ when it is no such
+::  token, or a huge one
+++  token-inputs
+  |=  tokens=@t
+  ^-  (unit [inputs=json total=@ud ids=(list @t)])
+  ?.  (lte (met 3 tokens) 65.536)  ~
+  ?~  jon=(de:json:html tokens)  ~
+  ?.  ?=([%o *] u.jon)  ~
+  =/  ins  (~(get by p.u.jon) 'inputs')
+  ?~  ins  ~
+  ?~  s=(inputs-sum u.ins)  ~
+  `[u.ins u.s]
+::
+::  +inputs-sum: the sum of a token's proofs, and their keyset ids; ~
+::  unless it is 1 to 100 proofs, each whole
+++  inputs-sum
+  |=  ins=json
+  ^-  (unit [total=@ud ids=(list @t)])
+  ?.  ?=([%a ^] ins)  ~
+  ?:  (gth (lent p.ins) 100)  ~
+  =/  got=(list [@ud @t])
+    %+  murn  p.ins
+    |=  i=json
+    ^-  (unit [@ud @t])
+    ?.  ?=([%o *] i)  ~
+    =/  a  (~(get by p.i) 'amount')
+    =/  k  (~(get by p.i) 'id')
+    ?.  ?&  ?=([~ %n *] a)  ?=([~ %s *] k)
+            ?=([~ %s *] (~(get by p.i) 'secret'))
+            ?=([~ %s *] (~(get by p.i) 'C'))
+        ==
+      ~
+    =/  n  (rush p.u.a dem)
+    ?:  |(?=(~ n) =([~ 0] n))  ~
+    `[(need n) p.u.k]
+  ?.  =((lent got) (lent p.ins))  ~
+  `[(roll (turn got head) add) (turn got tail)]
+::
+::  +new-outs: outputs for these amounts, each from its own entropy
+++  new-outs
+  |=  [amounts=(list @ud) kid=@t eny=@]
+  ^-  (list out)
+  =|  i=@ud
+  |-
+  ?~  amounts  ~
+  =/  o  (make-output i.amounts kid (sham [eny i]))
+  :-  [i.amounts kid secret.o blinding-factor.o b-hex.o]
+  $(amounts t.amounts, i +(i))
+::
+::  +out-reqs: outputs as a request carries them
+++  out-reqs
+  |=  outs=(list out)
+  ^-  (list [amount=@ud id=@t b-hex=@t])
+  (turn outs |=(o=out [amount.o id.o b.o]))
+::
+::  +keys-points: a keyset's keys as curve points; a bad key is left out
+++  keys-points
+  |=  keys=(map @ud @t)
+  ^-  (map @ud [x=@ y=@])
+  %-  ~(rep by keys)
+  |=  [[a=@ud h=@t] acc=(map @ud [x=@ y=@])]
+  =/  p  (mule |.((hex-to-point h)))
+  ?:(?=(%| -.p) acc (~(put by acc) a p.p))
+::
+::  +outs-proofs: the proofs the signatures on our outputs make, in order
+++  outs-proofs
+  |=  [outs=(list out) sigs=(list [amount=@ud id=@t c-hex=@t]) keys=(map @ud @t)]
+  ^-  (list proof)
+  %:  finalize-proofs
+    sigs
+    (turn outs |=(o=out secret.o))
+    (turn outs |=(o=out r.o))
+    (keys-points keys)
+  ==
+::
+::  +restored-proofs: the proofs a restore answer makes of our outputs:
+::  those the mint had signed, matched by B_
+++  restored-proofs
+  |=  [outs=(list out) got=(map @t [amount=@ud id=@t c-hex=@t]) keys=(map @ud @t)]
+  ^-  (list proof)
+  =/  have  (skim outs |=(o=out (~(has by got) b.o)))
+  (outs-proofs have (turn have |=(o=out (~(got by got) b.o))) keys)
+::
+::  +blank-count: how many blank outputs catch a melt's change: enough
+::  for every power of two up to what could come back (NUT-08)
+++  blank-count
+  |=  over=@ud
+  ^-  @ud
+  (max 1 (xeb over))
+::
+::  +select-proofs: proofs enough to pay `need` plus the fee spending
+::  them costs, largest first; ~ when the wallet can't
+++  select-proofs
+  |=  [have=(list proof) need=@ud ks=(list keyset)]
+  ^-  (unit (list proof))
+  =/  big  (sort have |=([a=proof b=proof] (gth amount.a amount.b)))
+  =|  got=(list proof)
+  =|  sum=@ud
+  |-
+  ?:  (gte sum (add need (input-fee ks (turn got |=(p=proof id.p)))))
+    `got
+  ?~  big  ~
+  $(big t.big, got [i.big got], sum (add sum amount.i.big))
 ::
 ::  -- Amount splitting --
 ::

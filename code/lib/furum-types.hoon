@@ -142,7 +142,7 @@
       [%set-prune name=board-name prune=(unit prune-config)]
       ::  payment
       [%set-payment name=board-name payment=(unit payment-config)]
-      [%submit-payment name=board-name mint=@t tokens=@t]
+      [%submit-payment name=board-name mint=@t tokens=@t nonce=@t]
       [%melt-to-lightning name=board-name mint=@t invoice=@t]
       [%request-lightning-invoice name=board-name nonce=@t]
       [%revoke-paid name=board-name who=@p]
@@ -249,18 +249,56 @@
 +$  board-conf  [next-post=post-id prune=(unit prune-config)]
 +$  limits  (map [@p board-name] [last=@da cooldown=@dr])
 ::
+::  a payment under way, in its grub (/pay/<id>): who pays, for what,
+::  at which mint, and the step it is on
+::
++$  pay
+  $:  who=@p                                  ::  the payer; us, withdrawing
+      name=board-name
+      nonce=@t                                ::  the payer's name for it
+      mint=@t
+      price=@ud
+      interval=@dr
+      step=pay-step
+  ==
++$  pay-step
+  $%  [%swap inputs=json]                     ::  ecash in hand
+      [%swapping inputs=json keys=(map @ud @t) outs=(list cashu-out)]
+      [%quote ~]                              ::  an invoice asked for
+      [%invoice quote=@t bolt11=@t expiry=@da]
+      [%minting quote=@t keys=(map @ud @t) outs=(list cashu-out)]
+      [%melt invoice=@t]                      ::  a withdrawal
+      [%melting quote=@t proofs=(list cashu-proof) keys=(map @ud @t) outs=(list cashu-out)]
+      [%done got=(list cashu-proof)]          ::  for the wallet
+      [%failed why=@t back=(list cashu-proof)]
+  ==
+::  an output we blinded, kept until the mint signs it (lib/cashu's out)
+::
++$  cashu-out  [amount=@ud id=@t secret=@t r=@ b=@t]
+::
 ::  why an action is refused, as a page or a note will say it
 ::
 +$  deny  [code=@ud why=@t]
 ::
 ::  what ships send each other, under [/furum %msg], to a nexus's
 ::  inbox: an action on a board it hosts, a registry action (with the
-::  sender's install path), or a notification for its owner
+::  sender's install path), a notification for its owner, or how a
+::  payment it made is going (under the nonce it gave it)
 ::
 +$  msg
   $%  [%act =action]
       [%reg here=path =registry-action]
       [%note title=@t body=@t url=(unit @t) tags=(set term)]
+      [%pay name=board-name nonce=@t view=pay-view]
+  ==
+::  a payment as its payer sees it: asked for (an invoice, or a token
+::  sent), an invoice to pay, paid for until when, or failed and why
+::
++$  pay-view
+  $%  [%asked ln=?]
+      [%invoice bolt11=@t amount=@ud expiry=@da]
+      [%paid until=@da]
+      [%failed why=@t]
   ==
 ::  a notification to send: to whom, and what
 ::

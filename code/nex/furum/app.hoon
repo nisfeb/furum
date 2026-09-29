@@ -14,6 +14,9 @@
 ::    /boards/<name>/…     one board we host, in the grubs lib/furum-board names:
 ::                         pub/ anyone reads; content/ too, or its members
 ::    /members/<name>      who may read a paid board, and until when
+::    /pay/<id>            one payment under way, and its fiber
+::    /wallets/<name>      a board's ecash, by mint, with every version kept
+::    /payments            the payments this ship made to other ships' boards
 ::    /sweep               when a member next runs out
 ::    /follows/<host>/<name>  a board on another ship we read; its follower
 ::    /cache/<host>/<name>/…  that board's mirror, the same grubs
@@ -42,6 +45,7 @@
 /<  fl  /lib/furum.hoon
 /<  fb  /lib/furum-board.hoon
 /<  fg  /lib/furum-registry.hoon
+/<  ca  /lib/cashu.hoon
 =<  ^-  nexus:nexus
     |%
     ++  on-load
@@ -70,6 +74,9 @@
           [%fall %& [/ %'dir.sig'] [[/ %sig] ~]]
           [%fall %& [/ %'sweep.sig'] [[/ %sig] ~]]
           [%fall %| /members empty-dir:loader]
+          [%fall %| /pay empty-dir:loader]
+          [%fall %| /wallets empty-dir:loader]
+          [%fall %& [/ %payments] [[/ %noun] [%1 ~]]]
           [%fall %& [/ %sweep] [[/ %noun] [%1 ~]]]
           [%fall %| /requests empty-dir:loader]
           [%fall %| /outbox empty-dir:loader]
@@ -164,6 +171,10 @@
         ;<  ~  bind:m  take-kick
         ?^  prod  (tell [%sent name.rail])
         (send-out name.rail)
+          ::  one payment, carried on from the step its grub holds
+          [[%pay ~] @]
+        ;<  ~  bind:m  (rise-later 1 prod "%furum payment: failed")
+        (run-pay name.rail)
           ::  one ephemeral fiber per request. One that crashed ends:
           ::  nothing would poke it awake. The kick first, or a late
           ::  answer queued before it crashes the first step at a reload
@@ -193,6 +204,9 @@
       [%prefs tags=(unit (set term)) registry=(unit @p)]
       [%reg who=@p here=path act=registry-action]
       [%sweep ~]
+      [%settle id=@ta]
+      [%spend id=@ta]
+      [%paying host=@p name=board-name nonce=@t ln=?]
   ==
 ::  your preferences: dark mode, which notes push to your browsers, and
 ::  the ship whose directory you read
@@ -217,6 +231,7 @@
           (line '/sys/ames/registry' 'let other ships reach your inbox, to post, comment and vote on your boards. Refuse this and nobody else can use your boards')
           (line '/sys/ames/ships/' 'post, comment and vote on boards other ships host, register your boards in the directory, and tell people when someone answers them. Refuse this and furum only works on your own boards')
           (line '/sys/push/' 'show notifications in your browser. Refuse this and they still collect on the notifications page')
+          (line '/sys/iris/' 'take payment for paid boards, from the Cashu mint each one names. Refuse this and nobody can pay for your boards')
       ==
       :-  'make'
       :-  %a
@@ -270,6 +285,9 @@
       %act    (do-act who.u.o action.u.o)
       %reg    (do-reg +.u.o)
       %sweep  ;<(~ bind:m sweep-all (pure:m ~))
+      %settle  (settle id.u.o)
+      %spend   (spend id.u.o)
+      %paying  ;<(~ bind:m (paying +.u.o) (pure:m ~))
   ==
 ::  +refuse: a refused op, as the writer's last outcome at /tr/last
 ::
@@ -308,6 +326,8 @@
     ::
         %unfollow-board  ;<(~ bind:m (feed-put [host name]:action |) (pure:m ~))
     ==
+  ?:  ?=(?(%submit-payment %request-lightning-invoice %melt-to-lightning) -.action)
+    (start-pay who action)
   =/  name=(unit board-name)  (board-of action)
   ?~  name  (refuse 501 'not in this release of furum')
   ::  a name no board can have is never made into a path
@@ -488,10 +508,14 @@
   ?~  g=(mole |.(;;(msg noun)))  (pure:m ~)
   ?-    -.u.g
       %note  (take-note src +.u.g)
-  ::
+      %pay   (take-pay src +.u.g)
+  ::  a payment refused is told as its answer, which its page waits on
       %act
     ;<  res=(unit deny)  bind:m  (do-act src action.u.g)
     ?~  res  (pure:m ~)
+    =*  a  action.u.g
+    ?:  ?=(%submit-payment -.a)  (mail src [%pay name.a nonce.a %failed why.u.res])
+    ?:  ?=(%request-lightning-invoice -.a)  (mail src [%pay name.a nonce.a %failed why.u.res])
     ;<  our=@p  bind:m  get-our:io
     =/  at=(unit @t)
       ?~  b=(board-of action.u.g)  ~
@@ -523,9 +547,15 @@
   ^-  form:m
   ;<  our=@p  bind:m  get-our:io
   ?:  =(our to.n)  (keep-note title.n body.n url.n tags.n)
+  (mail to.n [%note title.n body.n url.n tags.n])
+::  +mail: a message to another ship, through the outbox
+::
+++  mail
+  |=  [to=@p =msg]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
   ;<  eny=@uvJ  bind:m  get-entropy:io
-  %+  over:io  (rf 0 /outbox (scot %uv (end [3 8] eny)))
-  [[/ %noun] `[@p msg]`[to.n %note title.n body.n url.n tags.n]]
+  (over:io (rf 0 /outbox (scot %uv (end [3 8] eny))) [[/ %noun] `[@p ^msg]`[to msg]])
 ::  +keep-note: a note on the notifications page, and in the browser when
 ::  its kind is one the owner wants pushed. Its link must be one the
 ::  pages may follow.
@@ -606,6 +636,490 @@
         ['mark' s+(spat (snoc path.mark name.mark))]
     ==
   (over:io (rf 0 /tr %inbox) [[/ %json] [%a (scag 100 `(list json)`[row ?:(?=([%a *] old) p.old ~)])]])
+::  ==  payments
+::
+::  One grub per payment, /pay/<id>, and its fiber (+run-pay). The grub
+::  holds the step the payment is on, and a step is written before the
+::  request it leads to, so a restart (a reload, a crash, a ship coming
+::  back) carries on from where the payment stood. What a mint may have
+::  done already is asked before anything is done again: its signatures
+::  on our outputs (NUT-09 restore), for a swap or a mint; whether a
+::  melt's proofs are spent (NUT-07 checkstate), for a withdrawal. The
+::  writer turns a finished payment into wallet proofs and access, then
+::  culls the grub, which ends its fiber.
+::
+::  (its shape, $pay, is in lib/furum-types)
+::
+::  +start-pay: a payment asked for, made a pay grub. A paid board takes
+::  ecash only from a mint it trusts (+mint-accepted), Lightning only
+::  through the mint it names, and a ship has three payments under way
+::  at most. A withdrawal is the host's, one per board at a time.
+::
+++  start-pay
+  |=  [who=@p =action]
+  =/  m  (fiber:fiber:nexus ,(unit deny))
+  ^-  form:m
+  ?>  ?=(?(%submit-payment %request-lightning-invoice %melt-to-lightning) -.action)
+  ?.  (valid-board-name:fl name.action)  (refuse 404 'board not found')
+  ;<  our=@p  bind:m  get-our:io
+  ;<  a=(unit board)  bind:m  (read-access name.action)
+  ?~  a  (refuse 404 'board not found')
+  ;<  live=(list pay)  bind:m  (read-pays 0)
+  ?:  ?=(%melt-to-lightning -.action)
+    ?.  =(who our)  (refuse 403 'only the host withdraws')
+    ::  only a withdrawal is ever at %melt or %melting
+    ?:  (lien live |=(q=pay &(=(name.action name.q) ?=(?(%melt %melting) -.step.q))))
+      (refuse 409 'a withdrawal from this board is under way')
+    ?.  (sane-text:fr invoice.action 2.000)  (refuse 400 'that is not a Lightning invoice')
+    =/  mint=@t  (crip (clean-mint-url:ca mint.action))
+    ;<  w=(each (map @t (list cashu-proof)) @t)  bind:m  (read-wallet 0 name.action)
+    ?:  |(?=(%| -.w) =(~ (~(gut by p.w) mint ~)))
+      (refuse 400 'the wallet holds nothing from that mint')
+    (new-pay [our name.action '' mint 0 ~s0 %melt invoice.action])
+  ?>  ?=(?(%submit-payment %request-lightning-invoice) -.action)
+  ?~  pc=payment.u.a  (refuse 400 'this board is free')
+  ?:  =(who our)  (refuse 400 'you host this board')
+  =/  nonce=@t  ?:(?=(%submit-payment -.action) nonce.action nonce.action)
+  ?.  (sane-text:fr nonce 128)  (refuse 400 'a bad payment nonce')
+  ?:  (gte (lent (skim live |=(q=pay =(who who.q)))) 3)
+    (refuse 429 'three payments are already under way; wait for one to finish')
+  ?:  ?=(%request-lightning-invoice -.action)
+    ?~  mint.u.pc  (refuse 400 'this board takes no Lightning: it names no mint')
+    %-  new-pay
+    [who name.action nonce (crip (clean-mint-url:ca u.mint.u.pc)) price.u.pc interval.u.pc %quote ~]
+  ?>  ?=(%submit-payment -.action)
+  ?.  (mint-accepted:fl u.pc mint.action)  (refuse 400 'this board takes no ecash from that mint')
+  ?~  i=(token-inputs:ca tokens.action)  (refuse 400 'that is not a cashu token')
+  ?:  (lth total.u.i price.u.pc)  (refuse 402 'the token is worth less than the price')
+  %-  new-pay
+  [who name.action nonce (crip (clean-mint-url:ca mint.action)) price.u.pc interval.u.pc %swap inputs.u.i]
+::  +new-pay: its grub, named for the payer and its nonce, so an ask
+::  that comes twice is one payment
+::
+++  new-pay
+  |=  p=pay
+  =/  m  (fiber:fiber:nexus ,(unit deny))
+  ^-  form:m
+  ;<  eny=@uvJ  bind:m  get-entropy:io
+  =/  id=@ta  (crip ((x-co:co 16) (end [3 8] ?:(=('' nonce.p) eny (sham [who.p nonce.p])))))
+  ;<  n=(unit *)  bind:m  (read-noun (rf 0 /pay id))
+  ?^  n  (refuse 409 'that payment is already under way')
+  ;<  ~  bind:m  (over:io (rf 0 /pay id) [[/ %noun] [%1 p]])
+  (pure:m ~)
+::  +settle: a finished payment. Its proofs go to the board's wallet
+::  first, then the grub is culled, so it is settled once; then the
+::  payer has its access, from when its last runs out or from now, and
+::  word of it or of why it failed. A withdrawal's outcome is a note.
+::
+++  settle
+  |=  id=@ta
+  =/  m  (fiber:fiber:nexus ,(unit deny))
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf 0 /pay id))
+  ?~  g=(mole |.(;;([%1 pay] (need n))))  (pure:m ~)
+  =/  p=pay  +.u.g
+  =*  s  step.p
+  ?.  ?=(?(%done %failed) -.s)  (pure:m ~)
+  ;<  ok=?  bind:m  (wallet-change name.p mint.p ?:(?=(%done -.s) got.s back.s) |)
+  ?.  ok  (refuse 500 'unreadable: wallet; the payment waits')
+  ;<  ~  bind:m  (cull:io (rf 0 /pay id))
+  ;<  our=@p  bind:m  get-our:io
+  =/  at=(unit @t)  `(crip "/apps/furum/b/{(scow %p our)}/{(trip name.p)}/mod")
+  =/  tag  (sy ~[%payments])
+  ?:  =(our who.p)
+    ;<  ~  bind:m
+      ?:  ?=(%failed -.s)  (keep-note 'A withdrawal failed' why.s at tag)
+      (keep-note 'A withdrawal was paid' (crip "{(a-co:co (sats got.s))} sats came back as change") at tag)
+    (pure:m ~)
+  ?:  ?=(%failed -.s)
+    ;<  ~  bind:m  (mail who.p [%pay name.p nonce.p %failed why.s])
+    (pure:m ~)
+  ;<  now=@da  bind:m  get-time:io
+  ;<  mem=(each (map @p @da) @t)  bind:m  (read-members 0 name.p)
+  =/  until=@da  (add interval.p ?.(?=(%& -.mem) now (max now (~(gut by p.mem) who.p now))))
+  ;<  res=(unit deny)  bind:m  (do-act our [%grant-paid name.p who.p until])
+  ?^  res
+    ;<  ~  bind:m  (mail who.p [%pay name.p nonce.p %failed why.u.res])
+    (pure:m ~)
+  ;<  ~  bind:m  (mail who.p [%pay name.p nonce.p %paid until])
+  ;<  ~  bind:m
+    %^  keep-note  'New paid subscriber'
+      (crip "{(scow %p who.p)} paid {(a-co:co (sats got.s))} sats for {(trip name.p)}")
+    [at tag]
+  (pure:m ~)
+::  +spend: a withdrawal's proofs out of the wallet, before it is sent
+::
+++  spend
+  |=  id=@ta
+  =/  m  (fiber:fiber:nexus ,(unit deny))
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf 0 /pay id))
+  ?~  g=(mole |.(;;([%1 pay] (need n))))  (refuse 404 'no such payment')
+  =/  p=pay  +.u.g
+  ?.  ?=(%melting -.step.p)  (refuse 400 'no withdrawal under way')
+  ;<  ok=?  bind:m  (wallet-change name.p mint.p proofs.step.p &)
+  ?.  ok  (refuse 500 'unreadable: wallet')
+  (pure:m ~)
+::  +wallet-change: proofs into a board's wallet (by secret, so twice is
+::  once), or out of it. Every version is kept (gain): the record of each
+::  payment in and out. A wallet that won't read is never written over:
+::  | then, and the payment waits.
+::
+++  wallet-change
+  |=  [name=board-name mint=@t ps=(list cashu-proof) take=?]
+  =/  m  (fiber:fiber:nexus ,?)
+  ^-  form:m
+  ?:  =(~ ps)  (pure:m &)
+  ;<  w=(each (map @t (list cashu-proof)) @t)  bind:m  (read-wallet 0 name)
+  ?:  ?=(%| -.w)  (pure:m |)
+  =/  old=(list cashu-proof)  (~(gut by p.w) mint ~)
+  =/  these=(set @t)  (silt (turn ps |=(c=cashu-proof secret.c)))
+  =/  rest  (skip old |=(c=cashu-proof (~(has in these) secret.c)))
+  =/  new=(list cashu-proof)  ?:(take rest (weld rest ps))
+  ?:  =(new old)  (pure:m &)
+  ;<  ~  bind:m  (over-gained (rf 0 /wallets name) [[/ %noun] [%1 (~(put by p.w) mint new)]])
+  (pure:m &)
+::
+++  over-gained
+  |=  [=road:tarball =bask:tarball]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  =wire  bind:m  (nonce:io /make)
+  ;<  ~  bind:m  (send-dart:io %node wire road %make %.y %.y |+[bask ~])
+  (take-made:io wire)
+::
+++  sats  |=(ps=(list cashu-proof) ^-(@ud (roll (turn ps |=(c=cashu-proof amount.c)) add)))
+::  ==  paying another ship's board
+::
+::  /payments holds each payment this ship made, under the nonce it gave
+::  it, as its host last told of it. A week on, it is dropped.
+::
++$  payment  [host=@p name=board-name at=@da view=pay-view]
+::
+++  paying
+  |=  [host=@p name=board-name nonce=@t ln=?]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  now=@da  bind:m  get-time:io
+  ;<  ps=(map @t payment)  bind:m  (read-payments 0)
+  =/  kept  (malt (skim ~(tap by ps) |=([@t e=payment] (gth (add at.e ~d7) now))))
+  (over:io (rf 0 / %payments) [[/ %noun] [%1 (~(put by kept) nonce [host name now %asked ln])]])
+::  +take-pay: a host's word on a payment we made to it
+::
+++  take-pay
+  |=  [src=@p name=board-name nonce=@t view=pay-view]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  ps=(map @t payment)  bind:m  (read-payments 0)
+  ?~  e=(~(get by ps) nonce)  (pure:m ~)
+  ?.  &(=(src host.u.e) =(name name.u.e))  (pure:m ~)
+  (over:io (rf 0 / %payments) [[/ %noun] [%1 (~(put by ps) nonce u.e(view view))]])
+::  ==  the payment fiber
+::
+++  run-pay
+  |=  id=@ta
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  n=*  bind:m  (get-state-as:io ,*)
+  ?~  g=(mole |.(;;([%1 pay] n)))
+    ((slog leaf+"%furum payment {(trip id)}: unreadable; left as it is" ~) (pure:m ~))
+  (pay-step id +.u.g 0)
+::  +pay-go: a payment on to its next step, kept first
+::
+++  pay-go
+  |=  [id=@ta p=pay]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  ~  bind:m  (replace:io [%1 p])
+  (pay-step id p 0)
+::  +pay-retry: a mint that didn't answer is asked again after fifteen
+::  seconds, then twice as long each time, up to ten minutes. Before
+::  anything is paid or sent it gives up after a hundred tries; with an
+::  invoice out, or outputs out for signing, after about a week; a melt
+::  never, since until the mint says, its proofs may be spent.
+::
+++  pay-retry
+  |=  [id=@ta p=pay tries=@ud]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  =/  most=@ud  ?+(-.step.p 100 ?(%invoice %swapping %minting) 1.000, %melting 0)
+  ?:  &(!=(0 most) (gte tries most))
+    (pay-go id p(step [%failed 'the mint did not answer' ~]))
+  ;<  ~  bind:m  (sleep:io (min ~m10 (mul ~s15 (bex (min tries 6)))))
+  (pay-step id p +(tries))
+::  +pay-step: what a payment does from the step it is on
+::
+++  pay-step
+  |=  [id=@ta p=pay tries=@ud]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  =*  s  step.p
+  ?-    -.s
+      ?(%done %failed)  (pay-settle id)
+  ::  ecash in hand: our outputs for all of it less the mint's fee
+      %swap
+    ;<  k=(unit mint-keys)  bind:m  (read-keys mint.p)
+    ?~  k  (pay-retry id p tries)
+    ?~  i=(inputs-sum:ca inputs.s)  (pay-go id p(step [%failed 'that is not a cashu token' ~]))
+    =/  fee=@ud  (input-fee:ca ks.u.k ids.u.i)
+    ?:  (lte total.u.i fee)  (pay-go id p(step [%failed 'the token is worth no more than the mint fee' ~]))
+    ;<  eny=@uvJ  bind:m  get-entropy:io
+    =/  outs  (new-outs:ca (split-amount:ca (sub total.u.i fee)) kid.u.k eny)
+    (pay-go id p(step [%swapping inputs.s keys.u.k outs]))
+  ::
+      %swapping
+    %:  pay-sign  id  p  tries  keys.s  outs.s  "/v1/swap"
+      (build-swap-request:ca inputs.s (out-reqs:ca outs.s))
+    ==
+  ::  an invoice asked for: the mint's quote, whose invoice the payer pays
+      %quote
+    ;<  a=(unit [code=@ud jon=json])  bind:m
+      %:  mint-call  mint.p  "/v1/mint/quote/bolt11"
+        `(build-mint-quote-request:ca price.p 'sat')
+        |=(j=json (is-new-quote:ca j ~))
+      ==
+    ?~  a  (pay-retry id p tries)
+    ?~  q=(parse-mint-quote:ca jon.u.a)  (pay-go id p(step [%failed (mint-why jon.u.a) ~]))
+    ;<  now=@da  bind:m  get-time:io
+    =/  exp=@da  ?:(=(0 expiry.u.q) (add now ~h1) (from-unix:chrono:userlib expiry.u.q))
+    (pay-go id p(step [%invoice quote.u.q request.u.q exp]))
+  ::  the invoice with the payer (told again after a restart), and the
+  ::  mint asked every five seconds until it is paid or runs out
+      %invoice
+    ;<  ~  bind:m  (deliver 1 who.p [%pay name.p nonce.p %invoice bolt11.s price.p expiry.s])
+    |-
+    ;<  a=(unit [code=@ud jon=json])  bind:m
+      (mint-call mint.p "/v1/mint/quote/bolt11/{(trip quote.s)}" ~ |=(j=json (is-quote:ca j quote.s)))
+    =/  q  ?~(a ~ (parse-mint-quote:ca jon.u.a))
+    ?:  ?=([~ * * %'PAID' *] q)
+      ;<  k=(unit mint-keys)  bind:m  (read-keys mint.p)
+      ?~  k  (pay-retry id p tries)
+      ;<  eny=@uvJ  bind:m  get-entropy:io
+      =/  outs  (new-outs:ca (split-amount:ca price.p) kid.u.k eny)
+      (pay-go id p(step [%minting quote.s keys.u.k outs]))
+    ?:  ?=([~ * * %'ISSUED' *] q)  (pay-go id p(step [%failed 'the mint issued it already' ~]))
+    ;<  now=@da  bind:m  get-time:io
+    ?:  (gth now expiry.s)  (pay-go id p(step [%failed 'the invoice ran out unpaid' ~]))
+    ;<  ~  bind:m  (sleep:io ~s5)
+    $
+  ::
+      %minting
+    %:  pay-sign  id  p  tries  keys.s  outs.s  "/v1/mint/bolt11"
+      (build-mint-request:ca quote.s (out-reqs:ca outs.s))
+    ==
+  ::  a withdrawal: the mint's quote for the invoice, then proofs enough
+  ::  for it, its fee reserve and the fee for spending them, and blank
+  ::  outputs for the change (NUT-08)
+      %melt
+    ;<  k=(unit mint-keys)  bind:m  (read-keys mint.p)
+    ?~  k  (pay-retry id p tries)
+    ;<  a=(unit [code=@ud jon=json])  bind:m
+      %:  mint-call  mint.p  "/v1/melt/quote/bolt11"
+        `(build-melt-quote-request:ca invoice.s 'sat')
+        |=(j=json (is-new-quote:ca j `invoice.s))
+      ==
+    ?~  a  (pay-retry id p tries)
+    ?~  q=(parse-melt-quote:ca jon.u.a)  (pay-go id p(step [%failed (mint-why jon.u.a) ~]))
+    ;<  w=(each (map @t (list cashu-proof)) @t)  bind:m  (read-wallet 1 name.p)
+    =/  have=(list cashu-proof)  ?:(?=(%| -.w) ~ (~(gut by p.w) mint.p ~))
+    ?~  sel=(select-proofs:ca have (add amount.u.q fee-reserve.u.q) ks.u.k)
+      (pay-go id p(step [%failed 'the wallet holds too little for that invoice and its fees' ~]))
+    ;<  eny=@uvJ  bind:m  get-entropy:io
+    =/  outs  (new-outs:ca (reap (blank-count:ca (sub (sats u.sel) amount.u.q)) 1) kid.u.k eny)
+    (pay-go id p(step [%melting quote.u.q u.sel keys.u.k outs]))
+  ::  the melt: its proofs out of the wallet (again after a restart; it
+  ::  changes nothing then), and what the mint says of them decides. All
+  ::  unspent, it is sent; pending, it is waited on; spent, it was paid.
+      %melting
+    ;<  res=(unit deny)  bind:m  (ask [%spend id])
+    ?^  res  (pay-retry id p tries)
+    ;<  v=(unit @t)  bind:m  (melt-state mint.p proofs.s)
+    ?~  v  (pay-retry id p tries)
+    ?:  =('SPENT' u.v)  (melt-paid id p tries ~)
+    ?:  =('PENDING' u.v)  (melt-wait id p)
+    ;<  a=(unit [code=@ud jon=json])  bind:m
+      %:  mint-call  mint.p  "/v1/melt/bolt11"
+        `(build-melt-request:ca quote.s proofs.s (out-reqs:ca outs.s))
+        |=(j=json (is-quote:ca j quote.s))
+      ==
+    ?~  a  (pay-retry id p tries)
+    =/  r  (parse-melt-response:ca jon.u.a)
+    ?:  ?=([~ * %&] r)  (melt-paid id p tries `jon.u.a)
+    ?:  ?=([~ %'PENDING' *] r)  (melt-wait id p)
+    ;<  v=(unit @t)  bind:m  (melt-state mint.p proofs.s)
+    ?~  v  (pay-retry id p tries)
+    ?:  =('SPENT' u.v)  (melt-paid id p tries ~)
+    ?:  =('PENDING' u.v)  (melt-wait id p)
+    (pay-go id p(step [%failed (mint-why jon.u.a) proofs.s]))
+  ==
+::  +pay-sign: our outputs for the mint to sign, by a swap or a mint.
+::  What it signed before a restart is restored rather than asked for
+::  twice; refused, what it signed is still ours, and only nothing is a
+::  failure.
+::
+++  pay-sign
+  |=  [id=@ta p=pay tries=@ud keys=(map @ud @t) outs=(list out:ca) url=tape body=json]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  r=(unit (list cashu-proof))  bind:m  (restore mint.p outs keys)
+  ?~  r  (pay-retry id p tries)
+  ?^  u.r  (pay-go id p(step [%done u.r]))
+  ;<  a=(unit [code=@ud jon=json])  bind:m
+    (mint-call mint.p url `body |=(j=json (is-sigs:ca j (lent outs))))
+  ?~  a  (pay-retry id p tries)
+  =/  got=(list cashu-proof)  (outs-proofs:ca outs (parse-swap-response:ca jon.u.a) keys)
+  ?:  &(=(200 code.u.a) =((lent got) (lent outs)))
+    (pay-go id p(step [%done got]))
+  ;<  r=(unit (list cashu-proof))  bind:m  (restore mint.p outs keys)
+  ?~  r  (pay-retry id p tries)
+  ?^  u.r  (pay-go id p(step [%done u.r]))
+  (pay-go id p(step [%failed (mint-why jon.u.a) ~]))
+::  +melt-paid: a melt the mint paid. Its change is on our blank outputs,
+::  in its answer or, without one, restored.
+::
+++  melt-paid
+  |=  [id=@ta p=pay tries=@ud jon=(unit json)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ?>  ?=(%melting -.step.p)
+  =*  s  step.p
+  =/  got=(list cashu-proof)
+    ?~(jon ~ (outs-proofs:ca outs.s (parse-melt-change:ca u.jon) keys.s))
+  ?^  got  (pay-go id p(step [%done got]))
+  ;<  r=(unit (list cashu-proof))  bind:m  (restore mint.p outs.s keys.s)
+  ?~  r  (pay-retry id p tries)
+  (pay-go id p(step [%done u.r]))
+::  +melt-wait: a melt the mint holds pending, asked after every ten
+::  seconds for five minutes, then every minute, until it is paid or
+::  unpaid. Unpaid, its proofs come back when the mint says they are
+::  unspent.
+::
+++  melt-wait
+  |=  [id=@ta p=pay]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ?>  ?=(%melting -.step.p)
+  =*  s  step.p
+  =|  n=@ud
+  |-
+  ;<  ~  bind:m  (sleep:io ?:((lth n 30) ~s10 ~m1))
+  ;<  a=(unit [code=@ud jon=json])  bind:m
+    (mint-call mint.p "/v1/melt/quote/bolt11/{(trip quote.s)}" ~ |=(j=json (is-quote:ca j quote.s)))
+  =/  r  ?~(a ~ (parse-melt-response:ca jon.u.a))
+  ?:  &(?=([~ * %&] r) ?=(^ a))  (melt-paid id p 0 `jon.u.a)
+  ?.  ?=([~ %'UNPAID' *] r)  $(n +(n))
+  ;<  v=(unit @t)  bind:m  (melt-state mint.p proofs.s)
+  ?:  =(`'UNSPENT' v)  (pay-go id p(step [%failed 'the Lightning payment failed' proofs.s]))
+  ?:  =(`'SPENT' v)  (melt-paid id p 0 ~)
+  $(n +(n))
+::  +pay-settle: a finished payment handed to the writer, which culls its
+::  grub and so ends this fiber. Refused (the writer waits after a crash,
+::  or can't read the wallet), it is handed over again later.
+::
+++  pay-settle
+  |=  id=@ta
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  res=(unit deny)  bind:m  (ask [%settle id])
+  ;<  ~  bind:m  (sleep:io ?:(?=([~ %503 *] res) ~m1 ~m10))
+  (pay-settle id)
+::  ==  talking to a mint
+::
++$  mint-keys  [ks=(list keyset:ca) kid=@t keys=(map @ud @t)]
+::  +read-keys: a mint's keysets, and the one it signs new sat outputs
+::  under, with its keys
+::
+++  read-keys
+  |=  mint=@t
+  =/  m  (fiber:fiber:nexus ,(unit mint-keys))
+  ^-  form:m
+  ;<  a=(unit [code=@ud jon=json])  bind:m  (mint-call mint "/v1/keysets" ~ is-keysets:ca)
+  =/  ks=(list keyset:ca)  ?~(a ~ (parse-keysets:ca jon.u.a))
+  ?~  act=(active-sat:ca ks)  (pure:m ~)
+  ;<  b=(unit [code=@ud jon=json])  bind:m
+    (mint-call mint "/v1/keys/{(trip id.u.act)}" ~ |=(j=json (is-keys:ca j id.u.act)))
+  ?~  b  (pure:m ~)
+  ?~  keys=(parse-keys:ca jon.u.b)  (pure:m ~)
+  (pure:m `[ks id.u.act u.keys])
+::  +restore: the proofs a mint's record of our outputs makes (NUT-09):
+::  ~ when it didn't answer; none when it signed none of them, or keeps
+::  no such record
+::
+++  restore
+  |=  [mint=@t outs=(list out:ca) keys=(map @ud @t)]
+  =/  m  (fiber:fiber:nexus ,(unit (list cashu-proof)))
+  ^-  form:m
+  ;<  a=(unit [code=@ud jon=json])  bind:m
+    %:  mint-call  mint  "/v1/restore"
+      `(build-restore-request:ca (out-reqs:ca outs))
+      |=(j=json (is-restore:ca j outs))
+    ==
+  ?~  a  (pure:m ~)
+  (pure:m `(restored-proofs:ca outs (fall (parse-restore:ca jon.u.a) ~) keys))
+::  +melt-state: what a mint says of a melt's proofs (NUT-07), ~ when it
+::  doesn't say of all of them
+::
+++  melt-state
+  |=  [mint=@t ps=(list cashu-proof)]
+  =/  m  (fiber:fiber:nexus ,(unit @t))
+  ^-  form:m
+  =/  ys=(list @t)  (turn ps |=(c=cashu-proof (proof-y:ca secret.c)))
+  ;<  a=(unit [code=@ud jon=json])  bind:m
+    %:  mint-call  mint  "/v1/checkstate"
+      `(build-checkstate-request:ca ys)
+      |=(j=json (is-states:ca j (silt ys)))
+    ==
+  ?~  a  (pure:m ~)
+  ?~  st=(parse-checkstate:ca jon.u.a)  (pure:m ~)
+  (pure:m (verdict:ca u.st (lent ps)))
+::  +mint-why: what a mint said of a refusal, for whoever reads it
+::
+++  mint-why
+  |=  jon=json
+  ^-  @t
+  =/  d  ?.(?=([%o *] jon) ~ (~(get by p.jon) 'detail'))
+  ?.  ?=([~ %s *] d)  'the mint refused it'
+  (crip (scag 200 (trip p.u.d)))
+::  +mint-call: one request to a mint: its status and json (null when
+::  the body isn't json), or ~ when it didn't answer in a minute or we
+::  may not reach it. Answers come back by fiber, not by request, so an
+::  answer to an earlier one (sent before a restart, or given up on) may
+::  come first: a success is taken only when it names what we asked
+::  (want), and a failure, which names nothing, as it comes. Every step
+::  checks what the mint did before it concludes a failure.
+::
+++  mint-call
+  |=  [mint=@t pax=tape body=(unit json) want=$-(json ?)]
+  =/  m  (fiber:fiber:nexus ,(unit [code=@ud jon=json]))
+  ^-  form:m
+  =/  url=@t  (crip (weld (clean-mint-url:ca mint) pax))
+  =/  =request:http
+    ?~  body  [%'GET' url ~ ~]
+    [%'POST' url ~[['content-type' 'application/json']] `(as-octs:mimes:html (en:json:html u.body))]
+  ;<  err=(unit tang)  bind:m
+    (poke-soft:io &+&+[/sys/iris %'main.iris-state'] [[/ %iris-request] request])
+  ?^  err  (pure:m ~)
+  ((with-timeout:io ,[code=@ud jon=json]) /mint ~m1 (take-response want))
+::  +take-response: the answer to our request; a chunk of one, a cancel
+::  (it names no request) or another request's answer is let go
+::
+++  take-response
+  |=  want=$-(json ?)
+  =/  m  (fiber:fiber:nexus ,[code=@ud jon=json])
+  ^-  form:m
+  |=  input:fiber:nexus
+  :+  ~  q.state
+  ?+  in  [%skip ~]
+      ~  [%wait ~]
+      [~ %poke * *]
+    ?.  =([/ %http-response] p.sage.u.in)  [%skip ~]
+    =/  r  (mole |.(!<(client-response:iris q.sage.u.in)))
+    ?.  ?=([~ %finished *] r)  [%wait ~]
+    =/  code=@ud  status-code.response-header.u.r
+    =/  jon=json  ?~(full-file.u.r ~ (fall (de:json:html q.data.u.full-file.u.r) ~))
+    ?:  &((gte code 200) (lth code 300) !(want jon))  [%wait ~]
+    [%done code jon]
+  ==
 ::  ==  who may read what
 ::
 ::  +public-roads: what every ship may read of the boards we host
@@ -873,6 +1387,32 @@
   ^-  form:m
   ;<  n=(unit *)  bind:m  (read-noun (rf 0 / %limits))
   (pure:m (fall (mole |.(+:;;([%1 limits] (need n)))) ~))
+::  +read-wallet: a board's ecash by mint; none when there is no wallet,
+::  and why when it won't read
+::
+++  read-wallet
+  |=  [up=@ud name=@ta]
+  =/  m  (fiber:fiber:nexus ,(each (map @t (list cashu-proof)) @t))
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf up /wallets name))
+  ?~  n  (pure:m &+~)
+  ?~  v=(mole |.(+:;;([%1 (map @t (list cashu-proof))] u.n)))  (pure:m |+'unreadable: wallet')
+  (pure:m &+u.v)
+::  +read-pays: the payments under way; one that won't read is left out
+::
+++  read-pays
+  |=  up=@ud
+  =/  m  (fiber:fiber:nexus ,(list pay))
+  ^-  form:m
+  ;<  gs=(map path *)  bind:m  (read-dir up /pay)
+  (pure:m (murn ~(val by gs) |=(n=* (bind (mole |.(;;([%1 pay] n))) tail))))
+::
+++  read-payments
+  |=  up=@ud
+  =/  m  (fiber:fiber:nexus ,(map @t payment))
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf up / %payments))
+  (pure:m (fall (mole |.(+:;;([%1 (map @t payment)] (need n)))) ~))
 ::  +read-json: a grub as json, ~ when absent or unreadable
 ::
 ++  read-json
@@ -1197,11 +1737,20 @@
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
   ;<  o=[to=@p =msg]  bind:m  (get-state-as:io ,[to=@p =msg])
-  ;<  base=path  bind:m  (install-of 1 to.o)
+  ;<  ~  bind:m  (deliver 1 to.o msg.o)
+  (tell [%sent name])
+::  +deliver: a message to another ship's inbox, from a fiber `up` below
+::  the root, waiting thirty seconds at most for it to be taken
+::
+++  deliver
+  |=  [up=@ud to=@p =msg]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  base=path  bind:m  (install-of up to)
   ;<  *  bind:m
     %+  (with-timeout:io (unit tang))  /o
-    [~s30 (poke-soft:io [%& %& (remote to.o base /) %'inbox.sig'] [[/furum %msg] msg.o])]
-  (tell [%sent name])
+    [~s30 (poke-soft:io [%& %& (remote to base /) %'inbox.sig'] [[/furum %msg] msg])]
+  (pure:m ~)
 ::  ==  HTTP
 ::
 ::  what a request fiber knows about its request
@@ -1397,6 +1946,7 @@
     ?:  |(local ?=(~ payment.brd))  (pure:(fiber:fiber:nexus ,?) |)
     ;<  n=(unit *)  bind:(fiber:fiber:nexus ,?)  (read-noun (rf 1 /cache/(scot %p u.host)/[name] %access))
     (pure:(fiber:fiber:nexus ,?) !=(`[%1 &] n))
+  ?:  ?=([%payment @ ~] rest)  (serve-payment c u.host name brd i.t.rest closed)
   ?:  &(closed ?=(^ payment.brd))
     (send-page id.c 200 (render-paywall:fl u.host info.brd u.payment.brd ~ dark.c %.n))
   ?+    rest  (err c 404 "page not found")
@@ -1410,12 +1960,37 @@
       (parse-page:fl args.c)  pinned.brd  (~(get by boards.s) [u.host name])  sidebar.brd
     ==
   ::
-      [%mod %backup-proofs ~]  (err c 501 "paid boards arrive in a later release of furum")
+  ::  the host's wallet, as json to keep somewhere safe
+      [%mod %backup-proofs ~]
+    ?.  &(local mod)  (err c 403 "only the host keeps the wallet")
+    ;<  w=(each (map @t (list cashu-proof)) @t)  bind:m  (read-wallet 1 name)
+    ?:  ?=(%| -.w)  (err c 500 (trip p.w))
+    %+  send-json  id.c
+    :-  %a
+    %-  zing
+    %+  turn  ~(tap by p.w)
+    |=  [mint=@t ps=(list cashu-proof)]
+    %+  turn  ps
+    |=  q=cashu-proof
+    %-  pairs:enjs:format
+    :~  ['mint' s+mint]
+        ['amount' (numb:enjs:format amount.q)]
+        ['id' s+id.q]
+        ['secret' s+secret.q]
+        ['C' s+c.q]
+    ==
+  ::  a board we host shows its wallet, and a withdrawal under way
       [%mod ~]
     ?.  mod  (err c 403 "not a moderator")
+    ;<  w=(each (map @t (list cashu-proof)) @t)  bind:m
+      ?.  local  (pure:(fiber:fiber:nexus ,(each (map @t (list cashu-proof)) @t)) &+~)
+      (read-wallet 1 name)
+    ;<  live=(list pay)  bind:m  ?.(local (pure:(fiber:fiber:nexus ,(list pay)) ~) (read-pays 1))
+    =/  melting=?
+      (lien live |=(q=pay &(=(name name.q) ?=(?(%melt %melting) -.step.q))))
     %^  send-page  id.c  200
     %:  render-mod:fl  u.host  info.brd  roles.brd  local  dark.c  sidebar.brd  payment.brd
-      wallet.brd  %.n  (~(gut by args.c) 'saved' '')  paid.brd  now.c  prune.brd
+      ?:(?=(%& -.w) p.w ~)  melting  (~(gut by args.c) 'saved' '')  paid.brd  now.c  prune.brd
     ==
   ::
       [@ %edit ~]
@@ -1514,12 +2089,15 @@
   =/  base=tape  "/apps/furum/b/{(scow %p u.host)}/{(trip name)}"
   ?:  ?=([%follow ~] rest)    (ask-then c [%follow-board u.host name] base)
   ?:  ?=([%unfollow ~] rest)  (ask-then c [%unfollow-board u.host name] base)
-  ::  paying comes in phase 5
-  ?:  ?=(?([%pay ~] [%pay-lightning ~] [%mod %melt ~]) rest)
-    (err c 501 "paying for boards arrives in a later release of furum")
+  ::  paying for another ship's board
+  ?:  ?=(?([%pay ~] [%pay-lightning ~]) rest)
+    ?:  local  (err c 400 "you host this board")
+    (pay-then c u.host name ?=([%pay-lightning ~] rest) f)
   ::  what only the host may change
-  ?:  &(!local ?=([%mod ?(%prune %edit-info %public %delete %register %payment %grant %revoke) ~] rest))
+  ?:  &(!local ?=([%mod ?(%prune %edit-info %public %delete %register %payment %grant %revoke %melt) ~] rest))
     (err c 403 "only the board's host can change that")
+  ?:  ?=([%mod %melt ~] rest)
+    (ask-then c [%melt-to-lightning name (f 'mint') (f 'invoice')] "{base}/mod")
   ?:  ?=([%mod %register ~] rest)
     ;<  b=(each (unit board) @t)  bind:m  (read-board our.c name)
     ?.  ?=([%& ~ *] b)  (err c 404 "board not found")
@@ -1578,13 +2156,17 @@
       [%mod %remove-role ~]
     ?~  who=(slaw %p (f 'who'))  |+[400 "that is not a ship name"]
     &+[[%remove-role name u.who] "{base}/mod"]
-  ::  a price makes the board paid; unticked, free again
+  ::  a price makes the board paid; unticked, free again. Minutes, when
+  ::  given, are the period instead of days (a short one, to try it)
       [%mod %payment ~]
     =/  mint=@t  (f 'mint-url')
+    =/  for=@dr
+      ?:  =('' (f 'minutes'))  (mul ~d1 (max 1 (num 'interval' 30)))
+      (mul ~m1 (max 1 (num 'minutes' 1)))
     :+  %&
       :+  %set-payment  name
       ?.  =('on' (f 'enabled'))  ~
-      `[(num 'price' 0) (mul ~d1 (max 1 (num 'interval' 30))) ?:(=('' mint) ~ `mint)]
+      `[(num 'price' 0) for ?:(=('' mint) ~ `mint)]
     "{base}/mod?saved=payment"
   ::
       [%mod %grant ~]
@@ -1654,6 +2236,57 @@
     ?~  w  (pure:(fiber:fiber:nexus ,(unit wave:nexus)) ~)
     ((with-timeout:io wave:nexus) /seen ~s5 (take-news:io /mine))
   (redirect id.c to)
+::  +pay-then: a payment for another ship's board: kept in /payments
+::  under a fresh nonce, asked of its host, then its page, which follows
+::  the host's answers
+::
+++  pay-then
+  |=  [c=ctx host=@p name=board-name ln=? f=$-(@t @t)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  eny=@uvJ  bind:m  get-entropy:io
+  =/  nonce=@t  (crip ((x-co:co 16) (end [3 8] eny)))
+  ;<  res=(unit deny)  bind:m  (ask [%paying host name nonce ln])
+  ?^  res  (err c code.u.res (trip why.u.res))
+  =/  =action
+    ?:  ln  [%request-lightning-invoice name nonce]
+    [%submit-payment name (f 'mint') (f 'tokens') nonce]
+  ;<  base=path  bind:m  (install-of 1 host)
+  ;<  sent=(unit (unit tang))  bind:m
+    %+  (with-timeout:io (unit tang))  /send
+    [~s15 (poke-soft:io [%& %& (remote host base /) %'inbox.sig'] [[/furum %msg] `msg`[%act action]])]
+  ?~  sent  (err c 504 "{(scow %p host)} did not answer; try again when it is back")
+  ?^  u.sent  (err c 502 "{(scow %p host)} would not take it: it may not run this furum")
+  (redirect id.c "/apps/furum/b/{(scow %p host)}/{(trip name)}/payment/{(trip nonce)}")
+::  +serve-payment: how a payment we made is going, by its host's last
+::  word: the paywall waiting, the invoice to pay, the board once it
+::  opens to us, or why it failed
+::
+++  serve-payment
+  |=  [c=ctx host=@p name=board-name brd=board nonce=@t closed=?]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  ps=(map @t payment)  bind:m  (read-payments 1)
+  =/  base=tape  "/apps/furum/b/{(scow %p host)}/{(trip name)}"
+  ?~  e=(~(get by ps) nonce)  (err c 404 "payment not found")
+  ?.  &(=(host host.u.e) =(name name.u.e))  (err c 404 "payment not found")
+  ?~  payment.brd  (redirect id.c base)
+  =*  pc  u.payment.brd
+  =*  v  view.u.e
+  ?-    -.v
+      %failed   (err c 402 "the payment failed: {(trip why.v)}")
+      %invoice  (send-page id.c 200 (render-lightning-invoice:fl host info.brd pc `bolt11.v dark.c))
+      %asked
+    ?:  ln.v  (send-page id.c 200 (render-lightning-invoice:fl host info.brd pc ~ dark.c))
+    (send-page id.c 200 (render-paywall:fl host info.brd pc ~ dark.c &))
+  ::  paid: our copy of the board looks again, until it opens to us
+      %paid
+    ?.  closed  (redirect id.c base)
+    ;<  *  bind:m
+      %+  (with-timeout:io (unit tang))  /resync
+      [~s5 (poke-soft:io (rf 1 /follows/(scot %p host) name) [[/furum %op] ~])]
+    (send-page id.c 200 (render-paywall:fl host info.brd pc ~ dark.c &))
+  ==
 ::  +reg-then: a registry action of ours, then the redirect
 ::
 ++  reg-then
