@@ -164,8 +164,35 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/furum.hoon` holds eight tests. They drive the fibers through
-`+on-file` with the kit's `fiber-test`:
+`tests/nexus/` holds five suites, 46 tests:
+
+| suite | tests | what it owns |
+|---|---|---|
+| `furum-rules` | 8 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check |
+| `furum` | 12 | the Gall suite, unchanged: links, forms, vote targets, paging, threads, orderings |
+| `cashu` | 9 | the Gall suite, unchanged |
+| `furum-board` | 7 | a board in the ball (below) |
+| `nexus` | 10 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+
+The Gall desk's libs were copied to `code/lib` with grubbery imports
+(`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
+frozen except for the 0.6 release: fixes to the rules land in `code/lib`.
+Two Gall-only arms didn't come across: `+prune-timer` (Gall cards) became
+the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
+
+`furum-board` guards the storage:
+
+| test | protects |
+|---|---|
+| `test-round-trip` | a board with a reply, votes of each kind, pins, a sidebar, roles and auto-prune comes back from its grubs exactly; a deleted comment's id stays spent |
+| `test-buckets` | posts, threads and votes go in buckets of 100 by post id, a post with no comment has no thread, and nothing unvoted is kept |
+| `test-load-refuses` | a grub no shape fits stops the load by name, rather than reading as empty for the writer to write back |
+| `test-who-may` | the host alone makes and deletes boards; mods pin and set roles; a reader can't post; only an author edits |
+| `test-limits-and-targets` | the post cooldown binds everyone but mods; a comment needs its post, and a reply its parent |
+| `test-host-settings` | only the host edits or opens a board, a board keeps a title, a paid board stays closed, the sidebar's 10,000-byte cap, unpinning |
+| `test-votes` | a vote replaces the voter's last one on a target, and remove clears it |
+
+`nexus`:
 
 | test | protects |
 |---|---|
@@ -174,11 +201,18 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 | `test-crash-waits-then-rises` | a crash waits a minute, recorded in `rise.json` with a timer set. The `/rise` wake brings the writer back; another timer's wake doesn't |
 | `test-restart-under-writes` | rule 9: an op queued before the start's kick is held, then applied |
 | `test-writer-refuses` | a ship's poke, a malformed op and a wrong mark go to `/tr/last`, never a crash; a good op lands on `/tr/inbox` |
+| `test-ask-answered` | an ask is answered to the fiber that asked, refused or applied; a new board is made whole |
+| `test-prune` | the tick pokes the writer at its slot, and the writer deletes only the posts past age and under score, rewriting only their bucket |
 | `test-inbox-forwards` | the inbox forwards another ship's poke with the sender the transport names, and ignores a local one |
-| `test-owner-gate` | only the authenticated owner gets the page. A guest, or another ship eyre authenticated, gets 403. Only GET of the root is a page |
+| `test-owner-gate` | owner pages are the owner's; the about page is anyone's; a board a guest can't see answers like a missing one; a cross-site form and a wrong method are refused |
 | `test-rise-plan` | the backoff: 1, 2, 4 minutes to an hour, reset after two quiet hours |
 
-### Mutation run (2026-09-28, all ops)
+The request routes are checked live, not by unit tests:
+`scripts/api-matrix.py <url> <jar> <~ship>` works a fresh board through
+every host action and page, as owner and guest, with each refusal the
+routes promise (86 checks), and deletes it again.
+
+### Mutation run, phase 1 (2026-09-28, all ops)
 
 On the nexus and `code/lib/furum-rules.hoon`, in slices with `--only`,
 since a full run stopped ~wes after about 25 rebuilds. `test-crash-waits`
@@ -197,6 +231,37 @@ dies. What survives:
   sends a bowl read's answer before its ack.
 - **unreachable**, `+soft-behn`'s wire check: the fiber has one dart in
   flight when it waits, so no other pack arrives.
+
+### Mutation run, phase 2 (2026-09-28, all ops)
+
+On `code/lib/furum-board.hoon`, the writer's arms (`+apply`, `+do-act`,
+`+board-of`, `+store`, `+board-bole`, `+prune-all`, `+ask`, `+take-done`)
+and the new hot sort, in slices of about 20 with `--only`. Each
+furum-board mutant rebuilds the nexus that imports it, about 20 s apiece.
+
+The real gaps it found, each now tested:
+- a post with only downvotes: `+grubs` could drop its tally unseen
+  (`test-round-trip` now downvotes a post);
+- the host-only and size refusals of `+act`: editing a board, opening it,
+  a paid board made public, the sidebar's cap, removing a role, an empty
+  title on edit, and unpinning (`test-host-settings`);
+- the writer refusing another ship's preference action, and a bad board
+  name as a name (`test-ask-answered`).
+
+What survives:
+- **equivalent**, `+sort-posts-by-hot` `gth->gte` on the age and
+  `gte->gth` on the net score: zero either way at the boundary; and
+  `gth->gte` on the score comparison, which now sits behind an unequal
+  guard (the newer-first tie-break was added after the run, with its
+  own test).
+- **unreachable**, `+store`'s guard for deleting a board that has no
+  grubs: `+act` refuses that with 404 first.
+- **unreachable**, `+take-done`'s mark check: nothing but the writer pokes
+  a request fiber.
+
+The request routes (`+handle-request`, `+serve-*`) are not
+mutation-tested: `api-matrix.py` checks them live, at about a minute a
+mutant through `hoon-mutate.py --live`.
 
 ## Not covered
 

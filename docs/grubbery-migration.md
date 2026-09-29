@@ -89,9 +89,11 @@ tests/nexus/…   hoon-test-nexus.conf (DIALECT=grubbery)   scripts/{code-closur
   inbox.sig                  public poke road: remote posts, comments, votes, mod actions, joins
   notify.sig                 public poke road: notifications from hosts about our posts
   web.sig  requests/<eyre-id>                     bind /apps/furum, one fiber per request
+  prune.sig                  pokes the writer at each 6-hour slot (auto-prune)
   boards/<name>/
-    card                     title, description, host, price, mint, public?  (readable by anyone)
+    card                     title, description, host, public?; price and mint in phase 5  (readable by anyone)
     roles                    ship -> role
+    conf                     next post id, auto-prune settings
     content/                 the member-only part (for paid boards; see "Access")
       posts/b<k>             posts k*100 .. k*100+99: title, url, body, author, created
       threads/b<k>           the comments on those posts (capped per post)
@@ -102,7 +104,8 @@ tests/nexus/…   hoon-test-nexus.conf (DIALECT=grubbery)   scripts/{code-closur
   wallet/<mint>/proofs       gained: history is the ledger
   follows/<host>/<name>      one follower fiber per followed board
   cache/<host>/<name>/…      the mirror a follower keeps (content only; re-syncable)
-  seen/  notes/  prefs       unread marks, notifications, dark mode
+  seen  prefs  limits        read marks, dark mode, post cooldowns
+  notes/                     notifications (phase 3)
   registry/                  only on the registry ship: directory, admins, inbox
   rise.json  tr/last  tr/inbox                    crash record and refusal traces
 ```
@@ -348,7 +351,7 @@ spikes can move them.
 |---|---|---|---|
 | 0 | **spikes** (below) | S each | **done 2026-09-28**: see Phase 0 results |
 | 1 | skeleton: desk layout, on-load rows, `weir.json`, writer, inbox, request dispatch, crash handling, kit with `DIALECT=grubbery`, closure and weir checks | M | **done 2026-09-28**: see Phase 1 results |
-| 2 | host: boards, posts, comments, votes, roles, pins, sidebar, prune, caps, rate limits, the Sail pages, CSRF, public view | L | every current page and host action works on one ship; the ported suites and fiber tests pass |
+| 2 | host: boards, posts, comments, votes, roles, pins, sidebar, prune, caps, rate limits, the Sail pages, CSRF, public view | L | **done 2026-09-28**: see Phase 2 results |
 | 3 | network: follow by keep, remote writes by inbox, notifications, the registry | L | an xship script (two ships) follows, posts, comments, votes and gets notified, both ways |
 | 4 | access: public grants, member groups, moderator groups, revocation | M | a non-member is refused content by the weir; a lapsed member loses it within the sweep interval |
 | 5 | payments: payment grubs, wallet, Lightning and ecash, NUT-07/09 recovery, membership sweeper | L | pay, lapse and renew end to end against a test mint (nutshell `FakeWallet`), surviving a reload at every step |
@@ -445,6 +448,78 @@ rules.**
     1024 sats up, which would lose those proofs.
 - All fixed with `dum:ag` behind a tested `parse-id`. See
   `docs/hoon-testing.md`.
+
+### Phase 2 results (2026-09-28)
+
+Every page and host action of the Gall agent works on one ship (~bus):
+`scripts/api-matrix.py` passes all 86 of its checks, and the 46 unit
+tests in `tests/nexus/` pass.
+
+**How a board is stored and written.**
+- A board is a directory, `boards/<name>/`, of `[/ %noun]` grubs:
+  - `card` (the `board-info`), `roles` and `conf` (next post id, auto-prune);
+  - `content/pins` and `content/sidebar`;
+  - `content/{posts,threads,votes}/b<k>`, buckets of 100 posts by id.
+  - Each holds `[%1 shape]`, and `lib/furum-board` clams it.
+- `+load` assembles the Gall `$board` from the grubs, so the render lib
+  and the rules came across unchanged. A grub that won't clam stops the
+  load by name: the writer never writes back half a board.
+- `+act` is the agent's `+handle-action` as a pure transition, returning
+  the new board or `[code why]`. Every `?>` became a refusal a page can
+  show.
+- The writer reads the board with one deep peek, applies `+act`, and
+  writes only the grubs that changed (`+store`). A new board is made
+  whole, and a deleted one culled whole.
+- **Asks.** A request that redirects after a write pokes the writer under
+  `[/furum %ask]`. The writer answers `[/furum %done]` once the tree has
+  changed, so the page the browser lands on shows the write. A parked
+  writer refuses the ask at once (503); a silent one times out (504).
+- Also at the root: `follows/<host>/<name>`, `prefs` (dark mode), `seen`
+  (what you last read) and `limits` (cooldowns). `prune.sig` pokes the
+  writer at each slot of the 6-hour grid.
+
+**Deferred, and answered honestly.** Each of these is a 404 or 501 page
+naming its release, never a crash:
+- other ships' boards and the directory (phase 3);
+- payments, the paywall and proof backups (phase 5).
+
+The notifications page is empty until phase 3. The upload button says S3
+is not set up until `/sys/scry` is asked for.
+
+The admin page lost its clay backups: the guide now links a tar download
+of `boards/` (`?download=tar`), and the ball keeps each board's history.
+
+**Measured on ~bus** (2,450 posts on one board, a busy dev machine):
+- a page with no board read costs 0.4 s, grubbery's per-request events
+  (make the request grub, read the clock and the ship, answer, cull);
+- the board page takes 0.75 s, the mod page (read and load only) 0.5 s;
+- a post, comment or vote takes 0.8 to 0.9 s, rising about 0.05 s per
+  thousand posts. The writer reads the whole board and splits it on every
+  write: splitting only the touched buckets is the upgrade if big boards
+  write slowly;
+- 2,450 posts sit in 25 post buckets.
+
+**Found on the way:**
+- **The hot sort was quadratic twice over**, in the Gall agent too:
+  - `+score-post` computed `@rs` floats on both sides of every comparison.
+    A 700-post board took 46 s to render.
+  - `+sort` is a quicksort pivoting on the first element, so a board of
+    unvoted posts, which all score 0, sorts in O(n²).
+  - The fix: each post is scored once as an exact integer pair, compared by
+    cross-multiplying, with newer first at an equal score.
+  - 2,450 posts now sort in well under a second.
+- **The Gall agent crashes on post ids from 1000.** `(slav %ud '1000')`
+  refuses a number without dots, like `dem:ag`. So on a live board past
+  999 posts, the post page and every post action crash, and so does
+  deleting a comment past id 999. The nexus parses ids with `+parse-id`;
+  the Gall desk still has the bug.
+- **Hoon traps:**
+  - `;;` takes a spec: `;;([%1 board-info] x)`. With a comma it doesn't
+    build.
+  - `%+` takes exactly two arguments. A three-argument gate needs `%^`,
+    and the error lands on the next line, not the call.
+  - `?=(^ x)` inside an `=?` condition narrows the assigned value.
+    `!=(~ x)` doesn't.
 
 ### Phase 1 results (2026-09-28)
 
