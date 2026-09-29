@@ -4,9 +4,10 @@
 /<  ca  /lib/cashu.hoon
 /<  th  /lib/furum-theme.hoon
 |%
-++  version  '0.5.2'
+::  the release, as in code/version.json; the page footer shows it
+++  version  '1'
 ::
-::  favicon SVG: digamma (Ϝ) on red background
+::  the app icon (nex/furum/icon.svg) as a 512 px PNG, base64
 ::
 ++  furum-icon-png
   ^-  cord
