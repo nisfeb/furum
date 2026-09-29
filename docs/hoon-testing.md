@@ -164,17 +164,17 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/` holds seven suites, 95 tests:
+`tests/nexus/` holds seven suites, 105 tests:
 
 | suite | tests | what it owns |
 |---|---|---|
 | `furum-rules` | 10 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check; and who reads a paid board |
-| `furum` | 12 | the Gall suite, unchanged: links, forms, vote targets, paging, threads, orderings |
+| `furum` | 13 | the Gall suite: links, forms, vote targets, paging, threads, orderings; and the loading page in the reader's theme |
 | `cashu` | 17 | the Gall suite, and the wallet and recovery arms payments use (below) |
 | `furum-board` | 9 | a board in the ball, and who hears of an action (below) |
 | `furum-registry` | 2 | the directory's rules: first registrant, curation, admins |
-| `furum-theme` | 6 | the theme: colours derived as talon derives them, an accent, what a page draws with, talon's settings read as talon writes them |
-| `nexus` | 39 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+| `furum-theme` | 10 | the theme: colours derived as talon derives them, an accent, what a page draws with, talon's settings read as talon writes them |
+| `nexus` | 44 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
 
 The Gall desk's libs were copied to `code/lib` with grubbery imports
 (`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
@@ -198,6 +198,15 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 
 `nexus`:
 
+A road the kit's world refuses answers with a `%veto` intake, which is
+how grubbery answers a road outside *our* weir: `peek-soft` gives `~`.
+Another ship refusing a remote read comes back differently, as a
+`%peek` whose view is `[%veto ~]`. A test of a host's refusal answers
+the peek with that view (`answer-peek`); refusing `/sys/ames/ships` in
+the world only tests our own weir. And `serve` answers in the default
+world, so a test in a refusing world uses `serve-in`, or whatever the
+fiber sends next is answered as if nothing were refused.
+
 | test | protects |
 |---|---|
 | `test-writer-grants-the-inbox` | the writer registers itself and grants `/public` poke on `inbox.sig` only: a grant naming `main.sig` would let any ship write the boards |
@@ -210,6 +219,10 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-refusal-told-back` | a change another ship asks for and our writer refuses is told back to it, through the outbox |
 | `test-notes-from-followed` | a note is kept only from a ship whose boards we read; a link no page may follow is dropped; it pushes only when its kind is one the owner picked |
 | `test-follow` | following another ship's board puts it in the feed and starts its mirror; our own board only the feed; unfollowing only the feed |
+| `test-follower-gives-up` | a follower of a board it never read asks its host for `pub/`; the host refusing it (a `%veto` view) means no such board, so it tells the writer and ends with no keep. Our own weir refusing, a silent host, or a board we hold a copy of: followed as before |
+| `test-give-up` | the writer, told a board is gone, notes when under `/gone` and culls its follower |
+| `test-gone-board-page` | a board its host just said it lacks answers 404 "has no board named"; a minute on, the page asks again |
+| `test-directory-retries` | a registry read that fails notes why at `/tr/dir` (no answer, our weir's veto, the registry's `%veto` view) and retries in a minute, then two; one that works keeps the directory, clears the note, and waits the hour |
 | `test-registry-writer` | a ship that doesn't keep the registry refuses registry actions; one that does keeps the entry and the host's install path |
 | `test-public-grant-set` | at a rise every ship may read each board's `pub/` and a free board's `content/`, never a paid one's; only the paid board gets a group |
 | `test-public-grant-resent` | a board made, or given a price, resends the public grant; giving access doesn't |

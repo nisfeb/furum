@@ -914,7 +914,7 @@
   :*  'furum'  [nav (weld post-rows ~[pag-nav])]  ~  %.n  look  ==
 ::
 ++  render-home
-  |=  [entries=(list directory-entry) view=?(%all %curated %tag) active-tag=(unit @tas) all-tags=(set @tas) is-registry=? =look:th boards-with-new=(set [@p board-name])]
+  |=  [entries=(list directory-entry) view=?(%all %curated %tag) active-tag=(unit @tas) all-tags=(set @tas) is-registry=? =look:th boards-with-new=(set [@p board-name]) note=tape]
   ^-  manx
   =/  tag-list=(list @tas)
     %+  sort  ~(tap in all-tags)
@@ -952,6 +952,9 @@
             ;span;
       ==
       ;p.me: Showing: {view-label}
+      ::  why this ship's copy of the directory is out of date, if it is
+      ;+  ?~  note  ;span;
+          ;p.me(style "color: var(--error)"): {note}
     ==
   =/  board-rows=marl
     ?~  entries

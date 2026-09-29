@@ -19,6 +19,7 @@
 ::    /payments            the payments this ship made to other ships' boards
 ::    /sweep               when a member next runs out
 ::    /follows/<host>/<name>  a board on another ship we read; its follower
+::    /gone/<host>/<name>  when its host last said it has no such board
 ::    /cache/<host>/<name>/…  that board's mirror, the same grubs
 ::    /feed                the boards in the home feed
 ::    /prefs  /seen  /limits  the theme, push tags, the registry ship; what
@@ -28,6 +29,7 @@
 ::    /directory           this ship's copy of it
 ::    /grant.json          the shell's record of our grant, with our own path
 ::    /tr/last  /tr/inbox  the writer's last refusal; what other ships poked
+::    /tr/dir              why the registry's directory last failed to read
 ::    /rise.json           per fiber, its crashes in a row and its next try
 ::    tile, link, weir and icon: laid fresh on every load
 ::
@@ -85,6 +87,7 @@
           [%fall %| /outbox empty-dir:loader]
           [%fall %| /boards empty-dir:loader]
           [%fall %| /follows empty-dir:loader]
+          [%fall %| /gone empty-dir:loader]
           [%fall %| /cache empty-dir:loader]
           [%fall %& [/ %feed] [[/ %noun] [%1 ~]]]
           [%fall %& [/ %prefs] [[/ %noun] [%4 default-prefs]]]
@@ -97,6 +100,7 @@
           [%fall %| /tr empty-dir:loader]
           [%fall %& [/tr %last] [[/ %json] [%o ~]]]
           [%fall %& [/tr %inbox] [[/ %json] [%a ~]]]
+          [%fall %& [/tr %dir] [[/ %noun] [%1 ~]]]
           [%fall %& [/ %'rise.json'] [[/ %json] [%o ~]]]
       ==
     ::
@@ -160,7 +164,7 @@
           ::  this ship's copy of the registry's directory
           [~ %'dir.sig']
         ;<  ~  bind:m  (rise-later 0 prod "%furum directory: failed")
-        read-registry
+        (read-registry 0)
           ::  a follower: the mirror of one board on another ship
           [[%follows @ ~] @]
         ;<  ~  bind:m  (rise-later 2 prod "%furum follower {(trip i.t.path.rail)}/{(trip name.rail)}: failed")
@@ -203,6 +207,7 @@
       [%seen host=@p name=board-name pid=(unit post-id)]
       [%prune ~]
       [%watch host=@p name=board-name]
+      [%gone host=@p name=board-name]
       [%sent name=@ta]
       [%prefs tags=(unit (set term)) registry=(unit @p)]
       [%reg who=@p here=path act=registry-action]
@@ -295,6 +300,7 @@
       %seen   ;<(~ bind:m (write-seen +.u.o) (pure:m ~))
       %prune  ;<(~ bind:m prune-all (pure:m ~))
       %watch  ;<(~ bind:m (watch +.u.o) (pure:m ~))
+      %gone   ;<(~ bind:m (give-up +.u.o) (pure:m ~))
       %prefs  ;<(~ bind:m (set-prefs +.u.o) (pure:m ~))
       %sent   ;<(* bind:m (cull-soft:io (rf 0 /outbox name.u.o)) (pure:m ~))
       %act    (do-act who.u.o action.u.o)
@@ -530,6 +536,20 @@
   ;<  n=(unit *)  bind:m  (read-noun (rf 0 /follows/(scot %p host) name))
   ?^  n  (pure:m ~)
   (over:io (rf 0 /follows/(scot %p host) name) [[/ %noun] [%1 ~]])
+::  +give-up: its host has no such board. Stop following it, and say when,
+::  so its page says so instead of loading for ever.
+::
+::  ponytail: /gone keeps one grub per board ever found missing; only the
+::  owner's own visits make them. Prune them if that ever adds up.
+::
+++  give-up
+  |=  [host=@p name=board-name]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  now=@da  bind:m  get-time:io
+  ;<  ~  bind:m  (over:io (rf 0 /gone/(scot %p host) name) [[/ %noun] [%1 now]])
+  ;<  *  bind:m  (cull-soft:io (rf 0 /follows/(scot %p host) name))
+  (pure:m ~)
 ::  ==  from other ships
 ::
 ::  +from-ship: a poke another ship made to our inbox. Traced on its own
@@ -1637,6 +1657,10 @@
   ;<  base=path  bind:m  (install-of 2 host)
   =/  there=path  (remote host base /boards/[name])
   =/  mine=path  /cache/(scot %p host)/[name]
+  ;<  gone=?  bind:m  ?.(=(0 tries) (pure:(fiber:fiber:nexus ,?) |) (no-board there mine))
+  ?:  gone
+    ;<  *  bind:m  (poke-soft:io (rf 2 / %'main.sig') [[/furum %op] `op`[%gone host name]])
+    (pure:m ~)
   ;<  w=(unit wave:nexus)  bind:m  (keep-soft:io /fp [%& %| (weld there /pub)] ~ ~s30)
   ?~  w
     ;<  ~  bind:m  (sleep:io (min ~h1 (mul ~m1 (bex (min tries 6)))))
@@ -1673,6 +1697,22 @@
     ;<  c=(unit wave:nexus)  bind:m  (open-content there mine)
     $(kept ?=(^ c), lc ?~(c ~ (wave-files /content u.c)))
   ==
+::  +no-board: a board we have never read whose host refuses its pub/
+::  (a %veto view, the host's weir; a veto intake is our own weir, which
+::  says nothing of the board). Every hosted board's pub/ is open to
+::  every ship, so its host has no such board. Once we hold a copy a
+::  refusal proves nothing (a host mid-restart refuses for a moment), and
+::  the follower keeps trying.
+::
+++  no-board
+  |=  [there=path mine=path]
+  =/  m  (fiber:fiber:nexus ,?)
+  ^-  form:m
+  ;<  have=(map path *)  bind:m  (read-dir 2 mine)
+  ?.  =(~ have)  (pure:m |)
+  ;<  vw=(unit (unit view:nexus))  bind:m
+    ((with-timeout:io (unit view:nexus)) /nb ~s30 (peek-soft:io [%& %| (weld there /pub)] ~))
+  (pure:m ?=([~ ~ %veto *] vw))
 ::  +take-fev: what a follower waits for: news or a fell on either keep,
 ::  its heartbeat, or a local poke asking it to look again now
 ::
@@ -1802,32 +1842,73 @@
 ::  it keeps the registry's grub and copies it to /directory on each
 ::  change, and every hour regardless. It follows the registry pref: a
 ::  local poke (the admin page, after a change) makes it look again.
+::  A read that fails says why at /tr/dir, for the directory page, and
+::  is tried again in a minute, then two, and so on up to the hour.
 ::
 ++  read-registry
+  |=  tries=@ud
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
   ;<  our=@p  bind:m  get-our:io
   ;<  pf=prefs  bind:m  (read-prefs 0)
   ?:  =(our registry.pf)
     ;<  *  bind:m  take-poke-from:io
-    read-registry
+    (read-registry 0)
   ;<  base=path  bind:m  (install-of 0 registry.pf)
   =/  there=path  (remote registry.pf base /)
   ;<  w=(unit wave:nexus)  bind:m  (keep-soft:io /r [%& %& there %registry] ~ ~s30)
   |-
   ;<  vw=(unit (unit view:nexus))  bind:m
     ((with-timeout:io (unit view:nexus)) /reg ~s30 (peek-soft:io [%& %& there %registry] ~))
+  =/  why=(unit @t)  (dir-fault vw)
   ;<  ~  bind:m
-    ?.  ?=([~ ~ %file *] vw)  (pure:m ~)
-    =/  n=*  (sang-noun:tarball sang.u.u.vw)
-    ?~  (mole |.(;;([%1 registry-store] n)))  (pure:m ~)
-    (over:io (rf 0 / %directory) [[/ %noun] n])
+    ?^  why  (pure:m ~)
+    ?>  ?=([~ ~ %file *] vw)
+    (over:io (rf 0 / %directory) [[/ %noun] (sang-noun:tarball sang.u.u.vw)])
   ;<  now=@da  bind:m  get-time:io
-  ;<  ~  bind:m  (set-timer:io /rh (add now ~h1))
+  ;<  ~  bind:m  (dir-trace ?~(why ~ `[registry.pf u.why now]))
+  =/  wait=@dr  ?~(why ~h1 (min ~h1 (mul ~m1 (bex (min tries 6)))))
+  =/  next=@ud  ?~(why 0 +(tries))
+  ;<  ~  bind:m  (set-timer:io /rh (add now wait))
   ;<  e=?(%news %again)  bind:m  take-reg
   ;<  ~  bind:m  (cancel-timer:io /rh)
-  ?:  ?=(%again e)  read-registry
-  $
+  ?:  ?=(%again e)  (read-registry next)
+  $(tries next)
+::  +dir-fault: why a read of the registry's grub gave no directory, or ~
+::  when it gave one: the registry did not answer in time; our own weir
+::  refused the read (a veto intake, so peek-soft's ~); the registry's
+::  weir refused it (a %veto view); the answer was lost; it has none; or
+::  it keeps one this furum can't read
+::
+++  dir-fault
+  |=  vw=(unit (unit view:nexus))
+  ^-  (unit @t)
+  ?~  vw  `'it did not answer in time'
+  ?~  u.vw
+    `'this ship does not let furum read other ships. On grubbery\'s permissions page, allow furum /sys/ames/ships/ under "may read"'
+  ?:  ?=([%veto *] u.u.vw)  `'it refused to let this ship read it'
+  ?:  ?=([%miss *] u.u.vw)  `'the answer was lost on the way'
+  ?.  ?=([%file *] u.u.vw)  `'it keeps no directory'
+  ?~  (mole |.(;;([%1 registry-store] (sang-noun:tarball sang.u.u.vw))))
+    `'it keeps one this version of furum cannot read'
+  ~
+::  +dir-trace: /tr/dir, only when it changes: the ship whose directory
+::  would not read, why, and when; ~ once it reads
+::
+++  dir-trace
+  |=  t=(unit [who=@p why=@t at=@da])
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  old=(unit [who=@p why=@t at=@da])  bind:m  (read-dir-trace 0)
+  ?:  &(?=(~ t) ?=(~ old))  (pure:m ~)
+  (over:io (rf 0 /tr %dir) [[/ %noun] [%1 t]])
+::
+++  read-dir-trace
+  |=  up=@ud
+  =/  m  (fiber:fiber:nexus ,(unit [who=@p why=@t at=@da]))
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf up /tr %dir))
+  (pure:m (biff n |=(v=* (biff (mole |.(;;([%1 (unit [@p @t @da])] v))) tail))))
 ::  +take-reg: news of the registry, or a reason to look again: the hour
 ::  is up, or a local poke says the registry may have changed
 ::
@@ -2018,6 +2099,11 @@
     (send-page id.c 200 (render-feed:fl feed our.c now.c look.c pg boards.s))
   ;<  st=registry-store  bind:m  (read-directory 1)
   ;<  pf=prefs  bind:m  (read-prefs 1)
+  ;<  dt=(unit [who=@p why=@t at=@da])  bind:m  (read-dir-trace 1)
+  =/  reg=?  =(our.c registry.pf)
+  =/  note=tape
+    ?:  |(reg ?=(~ dt))  ""
+    "Couldn't read the directory on {(scow %p who.u.dt)} {(time-ago:fl now.c at.u.dt)}: {(trip why.u.dt)}. furum keeps trying; until then this list may be out of date."
   =/  entries=(list directory-entry)  ~(val by dir.st)
   =/  tags=(set @tas)  (roll entries |=([e=directory-entry a=(set @tas)] (~(uni in a) tags.e)))
   =/  bwn=(set [@p board-name])
@@ -2027,17 +2113,16 @@
     ?~  last=(~(get by boards.s) k)  ~
     =/  newest  (roll (turn ~(val by posts.b) |=(p=post created.p)) max)
     ?.((gth newest u.last) ~ `k)
-  =/  reg=?  =(our.c registry.pf)
   ?+    site.c
-      (send-page id.c 200 (render-home:fl entries %all ~ tags reg look.c bwn))
+      (send-page id.c 200 (render-home:fl entries %all ~ tags reg look.c bwn note))
       [%curated ~]
     =/  cur  (skim entries |=(e=directory-entry curated.e))
-    (send-page id.c 200 (render-home:fl cur %curated ~ tags reg look.c bwn))
+    (send-page id.c 200 (render-home:fl cur %curated ~ tags reg look.c bwn note))
   ::
       [%tag @ ~]
     =/  tag=@tas  ;;(@tas i.t.site.c)
     =/  tagged  (skim entries |=(e=directory-entry (~(has in tags.e) tag)))
-    (send-page id.c 200 (render-home:fl tagged %tag `tag tags reg look.c bwn))
+    (send-page id.c 200 (render-home:fl tagged %tag `tag tags reg look.c bwn note))
   ==
 ::  +serve-theme: the theme page: talon's theme settings as %settings
 ::  holds them, furum's own, and a theme being made or edited
@@ -2131,6 +2216,11 @@
   ?:  ?=(%| -.b)  (err c 500 (trip p.b))
   ?~  p.b
     ?:  |(local !(valid-board-name:fl name))  (err c 404 "board not found")
+    ::  its host said lately it has no such board; after a minute, ask again
+    ;<  g=(unit *)  bind:m  (read-noun (rf 1 /gone/(scot %p u.host) name))
+    =/  when=(unit @da)  (biff g |=(v=* (bind (mole |.(;;([%1 @da] v))) tail)))
+    ?:  &(?=(^ when) (lth now.c (add u.when ~m1)))
+      (err c 404 "{(scow %p u.host)} has no board named {(trip name)}")
     ;<  ~  bind:m  (tell [%watch u.host name])
     (send-page id.c 200 (render-loading:fl (weld "/apps/furum" (trip (spat site.c))) look.c))
   ::  who paid is kept apart from a board we host; the mod page lists them

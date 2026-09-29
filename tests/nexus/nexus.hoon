@@ -27,12 +27,17 @@
 ::  (at most n)
 ++  serve
   |=  [n=@ud t=trail:ft f=$-(road:tarball view:nexus)]
+  (serve-in a-world:ft n t f)
+::  the same in a world of the test's own, which then answers what the
+::  fiber sends next (a refused road stays refused)
+++  serve-in
+  |=  [w=world:ft n=@ud t=trail:ft f=$-(road:tarball view:nexus)]
   ^-  trail:ft
   ?:  =(0 n)  t
   ?.  ?=(%wait end.t)  t
   ?~  darts.t  t
   ?.  ?=([%node * * %peek *] (rear darts.t))  t
-  $(n (dec n), t (answer-peek:ft a-world:ft t (f (rear (peeks:ft t)))))
+  $(n (dec n), t (answer-peek:ft w t (f (rear (peeks:ft t)))))
 ++  file  |=(n=* ^-(view:nexus [%file *cass:clay [[/ %noun] %& !>(n)]]))
 ::  a host of a free board f and a paid board p: what each read finds
 ++  two-boards
@@ -233,6 +238,117 @@
     (expect-eq !>(~[[(rf 0 / %feed) [%1 (sy ~[[~zod %b]])]]]) !>((made-files (new w ours))))
     ::  unfollowing what isn't followed changes nothing
     (expect-eq !>(~) !>((made-files (new w gone))))
+  ==
+::
+::  the directory reader: a read of the registry that fails says why at
+::  /tr/dir (no answer; our own weir refusing, a veto; the registry's
+::  refusing, a %veto view) and is tried again in a minute, then two, not
+::  an hour on; a read that works keeps the directory, clears the
+::  reason, and waits the hour. It reads the default registry,
+::  ~ricsul-bilwyt
+::
+++  test-directory-retries
+  =/  wake  |=(w=wire (poke *from:fiber:nexus [[/ %timer-wake] !>(w)]))
+  =/  none  |=(r=road:tarball ^-(view:nexus [%none ~]))
+  =/  timers  |=(t=trail:ft (turn (pokes:ft t [/ %timer-set]) tail))
+  ::  a start: its prefs, its directory's hosts, then the keep's deadline
+  =/  begin
+    |=  [w=world:ft t=trail:ft]
+    (feed:ft w (serve-in w 5 t none) (wake /r/keep-deadline))
+  =/  up  (begin a-world:ft (start a-world:ft [~ %'dir.sig'] ~))
+  ::  the registry never answers; again, and it still doesn't
+  =/  late  (serve 2 (feed:ft a-world:ft up (wake /timeout/reg)) none)
+  =/  again  (begin a-world:ft (feed:ft a-world:ft late (wake /rh)))
+  =/  later  (serve 2 (feed:ft a-world:ft again (wake /timeout/reg)) none)
+  ::  the read is refused
+  =/  shut  =/(w a-world:ft w(refuse ~[/sys/ames/ships]))
+  =/  no  (serve-in shut 2 (begin shut (start shut [~ %'dir.sig'] ~)) none)
+  ::  the registry refuses it
+  =/  theirs  (serve 2 (answer-peek:ft a-world:ft up [%veto ~]) none)
+  ::  it reads, after a failure was traced
+  =/  was  [%1 `[~ricsul-bilwyt 'it did not answer in time' now]]
+  =/  ok  (answer-peek:ft a-world:ft up (file [%1 *registry-store]))
+  =/  ok  (serve 2 ok |=(r=road:tarball ?:(=(r (rf 0 /tr %dir)) (file was) [%none ~])))
+  ;:  weld
+    (expect-eq !>(`(list [road:tarball *])`~[[(rf 0 /tr %dir) was]]) !>((made-files late)))
+    (expect-eq !>([/rh (add now ~m1)]) !>((rear (timers late))))
+    (expect-eq !>([/rh (add now ~m2)]) !>((rear (timers later))))
+    %+  expect-eq
+      !>  ^-  (list [road:tarball *])  ~[[(rf 0 /tr %dir) [%1 `[~ricsul-bilwyt 'this ship does not let furum read other ships. On grubbery\'s permissions page, allow furum /sys/ames/ships/ under "may read"' now]]]]
+    !>((made-files no))
+    %+  expect-eq
+      !>  ^-  (list [road:tarball *])  ~[[(rf 0 /tr %dir) [%1 `[~ricsul-bilwyt 'it refused to let this ship read it' now]]]]
+    !>((made-files theirs))
+    %+  expect-eq
+      !>  ^-  (list [road:tarball *])  ~[[(rf 0 / %directory) [%1 *registry-store]] [(rf 0 /tr %dir) [%1 ~]]]
+    !>((made-files ok))
+    (expect-eq !>([/rh (add now ~h1)]) !>((rear (timers ok))))
+  ==
+::
+::  a follower of a board it has never read asks its host for the
+::  board's pub/, which every hosted board opens to every ship. Refused
+::  by the host (a %veto view), it has no such board: the follower tells
+::  the writer and ends, sending no keep. Our own weir refusing, a host
+::  that doesn't answer, or a board we hold a copy of: followed as before
+::
+++  test-follower-gives-up
+  =/  shut  =/(w a-world:ft w(refuse ~[/sys/ames/ships]))
+  =/  none  |=(r=road:tarball ^-(view:nexus [%none ~]))
+  =/  keeps
+    |=  t=trail:ft
+    (lent (skim darts.t |=(d=dart:nexus ?=([%node * * %keep *] d))))
+  =/  gone  |=(t=trail:ft (turn (pokes:ft t [/furum %op]) tail))
+  =/  fresh  (answer-peek:ft a-world:ft (serve 3 (start a-world:ft [/follows/~nec %b] ~) none) [%veto ~])
+  ::  our own weir refuses the read: nothing is known of the board
+  =/  ours  (serve-in shut 3 (start shut [/follows/~nec %b] ~) none)
+  ::  a copy of it here
+  =/  held
+    %-  serve-in
+    :^  shut  3  (start shut [/follows/~nec %b] ~)
+    |=  r=road:tarball
+    ?.  =(r (rv 2 /cache/~nec/b))  [%none ~]
+    [%ball *wave:nexus (as-ball (my ~[[/pub/card ~]]))]
+  ::  its host is silent
+  =/  quiet  (serve 3 (start a-world:ft [/follows/~nec %b] ~) none)
+  =/  quiet  (feed:ft a-world:ft quiet (poke *from:fiber:nexus [[/ %timer-wake] !>(/timeout/nb)]))
+  ;:  weld
+    (expect-eq !>([%done `(list *)`~[[%gone ~nec %b]] 0]) !>([end.fresh (gone fresh) (keeps fresh)]))
+    (expect-eq !>([`(list *)`~ 1]) !>([(gone ours) (keeps ours)]))
+    (expect-eq !>([`(list *)`~ 1]) !>([(gone held) (keeps held)]))
+    (expect-eq !>([`(list *)`~ 1]) !>([(gone quiet) (keeps quiet)]))
+  ==
+::
+::  the writer, told a board is gone: when, and no follower left
+::
+++  test-give-up
+  =/  t  (feed:ft a-world:ft writer (poke *from:fiber:nexus (op [%gone ~nec %b])))
+  =/  culls
+    %+  murn  darts.t
+    |=(d=dart:nexus ?.(?=([%node * * %cull *] d) ~ `road.d))
+  ;:  weld
+    (expect-eq !>(`(list [road:tarball *])`~[[(rf 0 /gone/~nec %b) [%1 now]]]) !>((made-files (new writer t))))
+    (expect-eq !>(~[(rf 0 /follows/~nec %b)]) !>(culls))
+  ==
+::
+::  a board its host said a moment ago it has no such board of: its page
+::  says so, where it would load for ever; a minute on, it asks again
+::
+++  test-gone-board-page
+  =/  w  =/(w a-world:ft w(refuse ~[/sys/scry]))
+  =/  page
+    |=  when=@da
+    =/  t  (run:ft w ((on-file:app [/requests %r1] *blot:tarball) ~) (request:ft ~zod & %'GET' '/apps/furum/b/~nec/b' ''))
+    =/  t
+      %-  serve-in
+      :^  w  6  t
+      |=  r=road:tarball
+      ?:(=(r (rf 1 /gone/~nec %b)) (file [%1 when]) [%none ~])
+    (status:ft t)
+  =/  [code=@ud body=@t]  (page now)
+  ;:  weld
+    (expect-eq !>(404) !>(code))
+    (expect-eq !>(%.y) !>(?=(^ (find "~nec has no board named b" (trip body)))))
+    (expect-eq !>(200) !>(code:(page (sub now ~m2))))
   ==
 ::
 ::  a ship that doesn't keep the registry refuses registry actions; one
