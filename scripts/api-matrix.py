@@ -9,7 +9,7 @@ checks each page shows what the action did, and deletes it again. Exit 0
 when every check passes, 1 when one fails. The jar comes from
 hoon-test-kit/ship-cookie.sh. Never point this at a real ship.
 """
-import sys, time, urllib.error, urllib.parse, urllib.request
+import json, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 url, jar, ship = sys.argv[1].rstrip('/'), sys.argv[2], sys.argv[3]
 cookie = next(f'{p[5]}={p[6]}' for p in (l.rstrip('\n').split('\t') for l in open(jar))
@@ -51,6 +51,9 @@ print('pages')
 for p in ['', '?view=directory', '/curated', '/tag/x', '/guide', '/create', '/admin',
           '/notifications', '/share?title=t&url=https://x.example']:
     get(f'GET {p or "/"}', p)
+# the footer names the release: ++version in lib/furum.hoon must follow code/version.json
+rel = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'code', 'version.json')))['version']
+get('the footer names the release', '/guide', has=[f'furum v{rel}<'])
 get('notif-count is json', '/notif-count', has=['"count":'])
 get('s3-config says not set up', '/s3-config', has=['{}'])
 get('registry goes to admin', '/registry', 303, to='/apps/furum/admin')

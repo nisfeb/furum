@@ -265,7 +265,7 @@ admins curate; only the registry names admins).
 The request routes and the network are checked live, not by unit tests:
 `scripts/api-matrix.py <url> <jar> <~ship>` works a fresh board through
 every host action and page, as owner and guest, with each refusal the
-routes promise, and the theme settings (110 checks), and deletes it
+routes promise, and the theme settings (111 checks), and deletes it
 again.
 `scripts/xship.py <url-a> <jar-a> <~a> <url-b> <jar-b> <~b>` runs two
 ships at each other, both ways (58 checks): the directory, following,

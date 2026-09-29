@@ -192,7 +192,7 @@ Furum's dev ships don't use `write-text`: `scripts/dev-deploy.py` mirrors `code/
 
 `$A`/`$JA`/`~a` and `$B`/`$JB`/`~b` are two fake dev ships (web address, owner cookie jar, name) running the release through `scripts/dev-deploy.py`, `~a` the host and the registry for both. The setup for each step is in `docs/hoon-testing.md`.
 
-1. `code/version.json` one higher than the last release, and `++  version` in `code/lib/furum.hoon` the same number: it is what the page footer shows.
+1. `code/version.json` one higher than the last release, and `++  version` in `code/lib/furum.hoon` the same number: it is what the page footer shows, and `api-matrix.py` fails until the two agree.
 2. `python3 scripts/code-closure.py code` says closed.
 3. `python3 scripts/weir-check.py code/nex/furum/app.hoon --io <grubbery checkout>/desk/lib/fiberio.hoon` prints `0 reached-but-undeclared`. The `/sys/ames/ships/` lines read unused: those roads are built by `+remote`, which the check can't follow.
 4. The unit suites are green: `HOON_TEST_CONF=hoon-test-nexus.conf scripts/hoon-test-kit/hoon-test.sh <pier>`. They include the crash rules: a refusing weir (`test-refusing-weir-parks`) and restarts under writes (`test-restart-under-writes`).
