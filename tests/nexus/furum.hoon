@@ -55,6 +55,19 @@
       !>((turn (pages 'https://ok.example/x') (has "href=\"https://ok.example/x\"")))
   ==
 ::
+::  the loading page draws in the reader's theme, as every other page
+::  does, rather than flashing the browser's white
+::
+++  test-loading-themed
+  =/  page  |=(=look:th (en-xml:html (render-loading:fl "/apps/furum/b/~zod/b" look)))
+  =/  has  |=([k=tape t=tape] ?=(^ (find k t)))
+  =/  dk  (page (draw:th %dark ~ ~))
+  ;:  weld
+    (expect-eq !>(%.y) !>((has "--bg:#0a0a14;" dk)))
+    (expect-eq !>(%.y) !>((has "name=\"theme-color\" content=\"#1a0808\"" dk)))
+    (expect-eq !>(%.y) !>((has "prefers-color-scheme: dark" (page (draw:th %system ~ ~)))))
+  ==
+::
 ::  body text links only http(s) urls, and keeps the text around them
 ::
 ++  test-linkify

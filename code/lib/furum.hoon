@@ -742,23 +742,29 @@
   =/  html=@t  (crip (en-xml:html manx))
   [(met 3 html) html]
 ::
-::  page shell: wrap content in full HTML page
+::  +theme-head: what every page's head needs to draw in its theme: the
+::  browser bar's colour (the header's, per light or dark), the theme's
+::  colours, and the stylesheet that draws with them
 ::
-++  page-shell
-  |=  [title=@t content=marl board-ctx=(unit [href=tape label=tape]) public=? =look:th]
-  ^-  manx
-  =/  style-node=manx
-    [[%style ~] [[[%$ [%$ (trip furum-css)]~] ~] ~]]
-  ::  the theme's colours, which the stylesheet draws with
-  =/  theme-node=manx
-    [[%style ~] [[[%$ [%$ (trip style.look)]~] ~] ~]]
-  ::  the browser bar's colour, the header's, per light or dark
-  =/  bar-nodes=marl
+++  theme-head
+  |=  =look:th
+  ^-  marl
+  %+  weld
     %+  turn  bars.look
     |=  [media=@t hex=@t]
     ^-  manx
     ?:  =('' media)  ;meta(name "theme-color", content (trip hex));
     ;meta(name "theme-color", content (trip hex), media (trip media));
+  ^-  marl
+  :~  [[%style ~] [[[%$ [%$ (trip style.look)]~] ~] ~]]
+      [[%style ~] [[[%$ [%$ (trip furum-css)]~] ~] ~]]
+  ==
+::
+::  page shell: wrap content in full HTML page
+::
+++  page-shell
+  |=  [title=@t content=marl board-ctx=(unit [href=tape label=tape]) public=? =look:th]
+  ^-  manx
   =/  sw-script=tape  (trip 'if("serviceWorker" in navigator)navigator.serviceWorker.register("/apps/furum/sw",{scope:"/apps/furum"});')
   =/  sw-node=manx
     [[%script ~] [[[%$ [%$ sw-script] ~] ~] ~]]
@@ -812,13 +818,11 @@
       ;meta(name "viewport", content "width=device-width, initial-scale=1");
       ;meta(name "apple-mobile-web-app-capable", content "yes");
       ;meta(name "apple-mobile-web-app-status-bar-style", content "black-translucent");
-      ;*  bar-nodes
       ;link(rel "manifest", href "/apps/furum/manifest");
       ;link(rel "apple-touch-icon", href "/apps/furum/icon");
       ;link(rel "icon", type "image/svg+xml", href "/apps/furum/favicon");
       ;title: {(trip title)}
-      ;+  theme-node
-      ;+  style-node
+      ;*  (theme-head look)
       ;+  sw-node
     ==
     ;+  body-node
@@ -2842,15 +2846,13 @@
   |=  [url=tape =look:th]
   ^-  manx
   =/  refresh=tape  "3;url={url}"
-  =/  style-node=manx
-    [[%style ~] [[[%$ [%$ (trip furum-css)]~] ~] ~]]
   ;html
     ;head
       ;meta(charset "utf-8");
       ;meta(name "viewport", content "width=device-width, initial-scale=1");
       ;meta(http-equiv "refresh", content refresh);
       ;title: furum - loading
-      ;+  style-node
+      ;*  (theme-head look)
     ==
     ;body
       ;div.ct
