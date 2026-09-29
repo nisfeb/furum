@@ -19,6 +19,7 @@
 ::
 +$  parts
   $:  card=(unit board-info)
+      payment=(unit payment-config)
       roles=(map @p role)
       conf=board-conf
       pins=(set post-id)
@@ -31,6 +32,7 @@
 ::  +load: a board from its directory's grubs, or why not. A grub that no
 ::  shape fits is named, never skipped: the writer must not write back a
 ::  board it could read only part of. Grubs it doesn't know are ignored.
+::  Who paid is not here: the writer adds it from members/<name>.
 ::
 ++  load
   |=  gs=(list grub)
@@ -44,15 +46,17 @@
   =*  val  val.i.gs
   =/  bad  |+(cat 3 'unreadable: ' (spat pax))
   ?+    pax  $(gs t.gs)
-      [%card ~]
+      [%pub %card ~]
+    ?^  v=(mole |.(;;([%2 board-info (unit payment-config)] val)))
+      $(gs t.gs, card.acc `+<.u.v, payment.acc +>.u.v)
     ?~  v=(mole |.(;;([%1 board-info] val)))  bad
     $(gs t.gs, card.acc `+.u.v)
   ::
-      [%roles ~]
+      [%pub %roles ~]
     ?~  v=(mole |.(;;([%1 (map @p role)] val)))  bad
     $(gs t.gs, roles.acc +.u.v)
   ::
-      [%conf ~]
+      [%pub %conf ~]
     ?~  v=(mole |.(;;([%1 board-conf] val)))  bad
     $(gs t.gs, conf.acc +.u.v)
   ::
@@ -105,6 +109,7 @@
     next-comment-ids  (~(run by threads.acc) |=(th=thread next.th))
     pinned            pins.acc
     sidebar           side.acc
+    payment           payment.acc
     prune             prune.conf.acc
   ==
 ::
@@ -142,9 +147,9 @@
   =/  out=(map path *)  (~(run by acc) |=(m=(map * *) [%1 m]))
   %-  ~(gas by out)
   ^-  (list [path *])
-  :~  [/card [%1 info.brd]]
-      [/roles [%1 roles.brd]]
-      [/conf [%1 `board-conf`[next-post-id.brd prune.brd]]]
+  :~  [/pub/card [%2 info.brd payment.brd]]
+      [/pub/roles [%1 roles.brd]]
+      [/pub/conf [%1 `board-conf`[next-post-id.brd prune.brd]]]
       [/content/pins [%1 pinned.brd]]
       [/content/sidebar [%1 sidebar.brd]]
   ==
@@ -197,6 +202,19 @@
       %set-prune
     ?.  =(who our)  |+[403 'only the host may set auto-prune']
     (done brd(prune prune.action))
+  ::  a paid board is never public: its content is its members'
+      %set-payment
+    ?.  =(who our)  |+[403 'only the host may set a price']
+    =.  payment.brd  payment.action
+    (done ?~(payment.action brd brd(public.info |)))
+  ::
+      %grant-paid
+    ?.  =(who our)  |+[403 'only the host may give access']
+    (done brd(paid (~(put by paid.brd) who.action until.action)))
+  ::
+      %revoke-paid
+    ?.  =(who our)  |+[403 'only the host may take access away']
+    (done brd(paid (~(del by paid.brd) who.action)))
   ::
       %pin-post
     ?.  mod  |+[403 'only a moderator may pin']

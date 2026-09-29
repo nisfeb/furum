@@ -164,16 +164,16 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/` holds six suites, 53 tests:
+`tests/nexus/` holds six suites, 60 tests:
 
 | suite | tests | what it owns |
 |---|---|---|
-| `furum-rules` | 8 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check |
+| `furum-rules` | 10 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check; and who reads a paid board |
 | `furum` | 12 | the Gall suite, unchanged: links, forms, vote targets, paging, threads, orderings |
 | `cashu` | 9 | the Gall suite, unchanged |
-| `furum-board` | 8 | a board in the ball, and who hears of an action (below) |
+| `furum-board` | 9 | a board in the ball, and who hears of an action (below) |
 | `furum-registry` | 2 | the directory's rules: first registrant, curation, admins |
-| `nexus` | 14 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+| `nexus` | 18 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
 
 The Gall desk's libs were copied to `code/lib` with grubbery imports
 (`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
@@ -189,9 +189,10 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-buckets` | posts, threads and votes go in buckets of 100 by post id, a post with no comment has no thread, and nothing unvoted is kept |
 | `test-load-refuses` | a grub no shape fits stops the load by name, rather than reading as empty for the writer to write back |
 | `test-who-may` | the host alone makes and deletes boards; mods pin and set roles; a reader can't post; only an author edits |
-| `test-limits-and-targets` | the post cooldown binds everyone but mods; a comment needs its post, and a reply its parent |
+| `test-limits-and-targets` | the post and comment cooldowns bind everyone but mods, and a mod's post records none; a comment needs its post, and a reply its parent |
 | `test-host-settings` | only the host edits or opens a board, a board keeps a title, a paid board stays closed, the sidebar's 10,000-byte cap, unpinning |
 | `test-notes` | the host hears of another's post; a post's author of a comment; a comment's author of a reply; never the actor, nobody twice |
+| `test-payment` | only the host sets a price, gives access or takes it; a price closes a public board |
 | `test-votes` | a vote replaces the voter's last one on a target, and remove clears it |
 
 `nexus`:
@@ -209,9 +210,18 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-notes-from-followed` | a note is kept only from a ship whose boards we read; a link no page may follow is dropped; it pushes only when its kind is one the owner picked |
 | `test-follow` | following another ship's board puts it in the feed and starts its mirror; our own board only the feed; unfollowing only the feed |
 | `test-registry-writer` | a ship that doesn't keep the registry refuses registry actions; one that does keeps the entry and the host's install path |
+| `test-public-grant-set` | at a rise every ship may read each board's `pub/` and a free board's `content/`, never a paid one's; only the paid board gets a group |
+| `test-public-grant-resent` | a board made, or given a price, resends the public grant; giving access doesn't |
+| `test-sweeper` | the sweeper sleeps until the next member runs out, then asks the writer to sweep, never before; another timer's wake is not its time |
+| `test-grant-writes-group` | a member given access goes into the board's group, and the registry is asked to open the board's content to it: its content, nothing more |
 | `test-inbox-forwards` | the inbox forwards another ship's poke with the sender the transport names, and ignores a local one |
 | `test-owner-gate` | owner pages are the owner's; the about page is anyone's; a board a guest can't see answers like a missing one; a cross-site form and a wrong method are refused |
 | `test-rise-plan` | the backoff: 1, 2, 4 minutes to an hour, reset after two quiet hours |
+
+`furum-rules` gained `test-group` (a paid board's group is its moderators
+and the members whose time hasn't run out; the next expiry is the soonest
+still to come) and `test-open-paths` (every ship reads each board's
+`pub/` and a free board's `content/`, never a paid board's content).
 
 `furum-registry` holds `test-register` (a name is its first registrant's;
 retitling keeps tags and curation; only the host unregisters; install
@@ -225,7 +235,10 @@ routes promise (86 checks), and deletes it again.
 `scripts/xship.py <url-a> <jar-a> <~a> <url-b> <jar-b> <~b>` runs two
 ships at each other, both ways (58 checks): the directory, following,
 posts, comments, replies, votes, moderation, notes, and a refusal told
-back.
+back. `scripts/access.py` (same arguments, host first) checks who may
+read a paid board (29 checks): the weir's grants, a stranger's paywall,
+access given and taken, a moderator, and a one-minute trial the sweeper
+ends.
 
 ### Mutation run, phase 1 (2026-09-28, all ops)
 
@@ -296,6 +309,31 @@ Each now has a test, and `+take-note` lost a clause no path reaches
 (our own notes never come through the inbox). The second pass killed all
 45 mutants that build; 4 don't build.
 
+### Mutation run, phase 4 (2026-09-28, all ops)
+
+`--since HEAD` lists 278 mutants in the arms phase 4 touched; most are
+page and follower code that `access.py` and `xship.py` check live. The
+run took the logic unit tests reach: the group and grant rules, the
+writer's access arms, the sweeper, and `+act` (56).
+
+The real gaps it found:
+- whether a free board's content is granted and a paid one's isn't;
+- whether a board made, or given a price, resends the public grant;
+- whether the sweep writes groups for paid boards only;
+- whether the sweeper waits for the expiry, where the mutant asked at
+  once and would have busy-looped;
+- whether a poster's comment starts a cooldown.
+
+Each now has a test (`test-public-grant-set`, `test-public-grant-resent`,
+`test-sweeper`, `test-limits-and-targets`), and a second pass killed them
+all. What survives:
+- **unreachable**, `+take-sweep`'s news-wire check: the sweeper keeps one
+  grub, so no other wire's news reaches it.
+- **equivalent**, `+write-soft`'s gain flag: history kept on a group's
+  files changes nothing it does.
+- **equivalent**, `+sweeper` `lte->lth` at an expiry of exactly now: the
+  next look sweeps.
+
 ## Not covered
 
 - **The agent**: on-load migrations, HTTP routing, the iris payment state
@@ -314,12 +352,15 @@ Each now has a test, and `+take-note` lost a clause no path reaches
 
 ## The vendored kit
 
-`scripts/hoon-test-kit/` is kit `13bc43f` plus one local patch:
+`scripts/hoon-test-kit/` is kit `13bc43f` plus two local patches. The
+first: `hoon-mutate.py`'s `touched_arms` unpacked `LIBS` entries as pairs,
+though they are triples, so `--since` always crashed; it now unpacks
+three. The second:
 `hoon-mutate.py` decodes the suites' output with `errors="replace"`. A
 `+hex-char` mutant turned `%C3%A9` into a lone `0xC3`, the failure report
 printed it, and the runner died on a `UnicodeDecodeError`, voiding the
-run. The patch belongs upstream. Re-vendoring from a kit that has it drops
-the local copy.
+run. Both patches belong upstream. Re-vendoring from a kit that has them
+drops the local copies.
 
 ## For the kit's PLAYBOOK
 

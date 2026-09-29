@@ -2240,15 +2240,22 @@
   =/  paid-section=manx
     ?.  is-host  ;span;
     ?~  payment  ;span;
-    ?:  =(0 ~(wyt by paid))  ;span;
     ;div
       ;hr;
-      ;h4: Paid Subscribers
+      ;h4: Members
+      ;p.me: Members and moderators read this board; nobody else can.
+      ;form(method "post", action "{board-path}/mod/grant")
+        ;input(type "text", name "who", placeholder "~sampel-palnet", required "");
+        ;input(type "number", name "days", value "30", min "1", style "width: 5em");
+        ;+  ;/(" days ")
+        ;input.btn(type "submit", value "give access");
+      ==
       ;table(style "width: 100%; border-collapse: collapse")
         ;tr(style "text-align: left")
           ;th: Ship
           ;th: Paid Until
           ;th: Status
+          ;th;
         ==
         ;*  %+  turn  paid-list
             |=  [who=@p until=@da]
@@ -2256,6 +2263,12 @@
               ;td: {(scow %p who)}
               ;td: {(scow %da until)}
               ;td: {?:((gth until now) "active" "expired")}
+              ;td
+                ;form(method "post", action "{board-path}/mod/revoke", style "display:inline")
+                  ;input(type "hidden", name "who", value (scow %p who));
+                  ;button.va(type "submit"): revoke
+                ==
+              ==
             ==
       ==
     ==

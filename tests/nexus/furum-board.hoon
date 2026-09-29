@@ -75,7 +75,7 @@
   %+  expect-eq
     !>  %-  sy
         ^-  (list path)
-        :~  /card  /roles  /conf  /content/pins  /content/sidebar
+        :~  /pub/card  /pub/roles  /pub/conf  /content/pins  /content/sidebar
             /content/posts/b0  /content/posts/b1
             /content/threads/b1  /content/votes/b1
         ==
@@ -130,7 +130,11 @@
         [~nec %new-post %b 'nec' ~ ~]
     ==
   =/  mod  (act:fb host host now [%new-post %b 'host' ~ ~] b l)
+  =/  commented  (act:fb ~bus host now [%new-comment %b 0 ~ 'c'] b l)
   ;:  weld
+    ::  a poster's comment starts a cooldown too
+    %+  expect-eq  !>(`[429 'you\'re commenting too fast — please wait a bit and try again'])
+      !>(?.(?=(%& -.commented) ~ (deny brd.p.commented lim.p.commented ~bus %new-comment %b 0 ~ 'again')))
     %+  expect-eq  !>(`[429 'you\'re posting too fast — please wait a bit and try again'])
       !>((deny b l ~nec %new-post %b 'again' ~ ~))
     (expect-eq !>(~) !>((deny b l host %new-post %b 'host' ~ ~)))
@@ -168,6 +172,32 @@
     (expect-eq !>(`[403 'only a moderator may set roles']) !>((deny b l ~nec %remove-role %b ~nec)))
     %+  expect-eq  !>(`[400 'a post needs a title (300 bytes at most) and a body of 40,000'])
       !>((deny b l ~nec %edit-post %b 0 '' ~))
+  ==
+::
+::  paying: only the host sets a price, gives access or takes it; a price
+::  closes a public board, and a board with no price opens to anyone
+::  again only when made public
+::
+++  test-payment
+  =/  [b=(unit board) l=limits]
+    %-  play
+    :~  [host %create-board %b 'B' '' %poster]
+        [host %set-public %b &]
+    ==
+  =/  pay=payment-config  [100 ~d30 ~]
+  =/  priced  (act:fb host host now [%set-payment %b `pay] b l)
+  =/  given   (act:fb host host now [%grant-paid %b ~nec ~2026.2.1] b l)
+  =/  gone
+    ?.  ?=(%& -.given)  given
+    (act:fb host host now [%revoke-paid %b ~nec] brd.p.given l)
+  =/  get  |=(r=(each [brd=(unit board) lim=limits] [@ud @t]) ?>(?=(%& -.r) (need brd.p.r)))
+  ;:  weld
+    (expect-eq !>(`[403 'only the host may set a price']) !>((deny b l ~nec %set-payment %b `pay)))
+    (expect-eq !>(`[403 'only the host may give access']) !>((deny b l ~nec %grant-paid %b ~nec ~2026.2.1)))
+    (expect-eq !>(`[403 'only the host may take access away']) !>((deny b l ~nec %revoke-paid %b ~nec)))
+    (expect-eq !>([`pay |]) !>([payment public.info]:(get priced)))
+    (expect-eq !>((my ~[[~nec ~2026.2.1]])) !>(paid:(get given)))
+    (expect-eq !>(~) !>(paid:(get gone)))
   ==
 ::
 ::  who hears of what: the host of another's post; a post's author of a

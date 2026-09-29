@@ -66,6 +66,37 @@
   ?:  (gte score min-score.cfg)  ~
   `id
 ::
+::  +group-ships: who may read a paid board's content besides its host:
+::  its moderators, and its members whose time hasn't run out
+::
+++  group-ships
+  |=  [brd=board now=@da]
+  ^-  (set @p)
+  %-  ~(uni in (silt (murn ~(tap by roles.brd) |=([w=@p r=role] ?.(=(%mod r) ~ `w)))))
+  (silt (murn ~(tap by paid.brd) |=([w=@p u=@da] ?.((gth u now) ~ `w))))
+::
+::  +open-paths: what every ship may read of the boards we host: each
+::  board's pub/, and a free board's content/. A paid board's content is
+::  its group's alone.
+::
+++  open-paths
+  |=  boards=(list [name=@ta paid=?])
+  ^-  (list path)
+  %-  zing
+  %+  turn  boards
+  |=  [name=@ta paid=?]
+  ?:  paid  ~[/boards/[name]/pub]
+  ~[/boards/[name]/pub /boards/[name]/content]
+::
+::  +next-expiry: when a member of the board next runs out, if one will
+::
+++  next-expiry
+  |=  [brd=board now=@da]
+  ^-  (unit @da)
+  =/  later=(list @da)  (sort (skim ~(val by paid.brd) |=(u=@da (gth u now))) lth)
+  ?~  later  ~
+  `i.later
+::
 ::  +sane-text: non-empty and at most max bytes; bounds what a remote
 ::  poke can store on the host
 ::

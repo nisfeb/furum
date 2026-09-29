@@ -7,10 +7,14 @@
 ::                         actions on our boards, registry actions, notes
 ::    /web.sig             binds /apps/furum; one fiber per request
 ::    /prune.sig           the auto-prune tick, on a 6-hour grid
+::    /sweep.sig           wakes the writer when a member's time runs out
 ::    /dir.sig             keeps this ship's copy of the registry's directory
 ::    /requests/<id>       the ephemeral request fibers
 ::    /outbox/<id>         one message to another ship, and its fiber
-::    /boards/<name>/…     one board we host, in the grubs lib/furum-board names
+::    /boards/<name>/…     one board we host, in the grubs lib/furum-board names:
+::                         pub/ anyone reads; content/ too, or its members
+::    /members/<name>      who may read a paid board, and until when
+::    /sweep               when a member next runs out
 ::    /follows/<host>/<name>  a board on another ship we read; its follower
 ::    /cache/<host>/<name>/…  that board's mirror, the same grubs
 ::    /feed                the boards in the home feed
@@ -64,6 +68,9 @@
           [%fall %& [/ %'web.sig'] [[/ %sig] ~]]
           [%fall %& [/ %'prune.sig'] [[/ %sig] ~]]
           [%fall %& [/ %'dir.sig'] [[/ %sig] ~]]
+          [%fall %& [/ %'sweep.sig'] [[/ %sig] ~]]
+          [%fall %| /members empty-dir:loader]
+          [%fall %& [/ %sweep] [[/ %noun] [%1 ~]]]
           [%fall %| /requests empty-dir:loader]
           [%fall %| /outbox empty-dir:loader]
           [%fall %| /boards empty-dir:loader]
@@ -96,7 +103,9 @@
           ::  is answered once it is applied, refused or not
           [~ %'main.sig']
         ;<  ~  bind:m  (rise-later 0 prod "%furum writer: failed")
-        ;<  ~  bind:m  grant-public
+        ::  jailed (no clock yet), the approval reload does this
+        ;<  clock=(unit @da)  bind:m  soft-now
+        ;<  ~  bind:m  ?~(clock (pure:m ~) ;<(~ bind:m grant-public sweep-all))
         |-
         ;<  [=from:fiber:nexus =sage:tarball]  bind:m  take-poke-from:io
         ;<  res=(unit deny)  bind:m  (apply from sage)
@@ -132,6 +141,12 @@
         ;<  ~  bind:m  (sleep:io (sub (prune-at:fr now) now))
         ;<  *  bind:m  (poke-soft:io (rf 0 / %'main.sig') [[/furum %op] `op`[%prune ~]])
         $
+          ::  the sweeper: when a member's time runs out, the writer
+          ::  takes the ship out of the board's group
+          [~ %'sweep.sig']
+        ;<  ~  bind:m  (rise-later 0 prod "%furum sweep: failed")
+        ;<  *  bind:m  (keep-soft:io /s (rf 0 / %sweep) ~ ~s30)
+        sweeper
           ::  this ship's copy of the registry's directory
           [~ %'dir.sig']
         ;<  ~  bind:m  (rise-later 0 prod "%furum directory: failed")
@@ -177,6 +192,7 @@
       [%sent name=@ta]
       [%prefs tags=(unit (set term)) registry=(unit @p)]
       [%reg who=@p here=path act=registry-action]
+      [%sweep ~]
   ==
 ::  your preferences: dark mode, which notes push to your browsers, and
 ::  the ship whose directory you read
@@ -202,29 +218,33 @@
           (line '/sys/ames/ships/' 'post, comment and vote on boards other ships host, register your boards in the directory, and tell people when someone answers them. Refuse this and furum only works on your own boards')
           (line '/sys/push/' 'show notifications in your browser. Refuse this and they still collect on the notifications page')
       ==
+      :-  'make'
+      :-  %a
+      :~  (line '/sys/ames/usergroups/' 'keep a group for each paid board: its members and moderators, the ships that may read it. Refuse this and a paid board stays closed to everyone but you')
+      ==
       :-  'peek'
       :-  %a
       :~  (line '/sys/ames/ships/' 'read boards other ships host, keep them current, and read the board directory. Refuse this and you see only your own boards')
       ==
   ==
 ::  +grant-public: open the inbox to every ship, and let every ship read
-::  the boards we host and the registry (empty but where we keep it; a
-::  paid board's content is closed in phase 4). Sent by the writer
+::  the registry (empty but where we keep it), each board's pub/, and a
+::  free board's content/. The set is complete each time: the registry
+::  replaces what we granted before. Sent by the writer
 ::  itself: the registry keys a grant to the rail that registered, and
-::  drops a %how from any other fiber without a word. Jailed (no clock
-::  yet) it waits for the approval reload; a refused road is traced, and
-::  the boards stay local.
+::  drops a %how from any other fiber without a word. A refused road is
+::  traced, and the boards stay local.
 ::
 ++  grant-public
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
-  ;<  clock=(unit @da)  bind:m  soft-now
-  ?~  clock  (pure:m ~)
   ;<  reg=(unit tang)  bind:m  (reg-register-at-soft:io [/ %'main.sig'])
   ?^  reg  (trace:io [leaf+"%furum: no registry road; other ships cannot reach the inbox" u.reg])
+  ;<  names=(list @ta)  bind:m  (board-names 0)
+  ;<  open=(list road:tarball)  bind:m  (public-roads names)
   ;<  how=(unit tang)  bind:m
     %+  reg-how-soft:io  /public
-    [~ (sy ~[(rf 0 / %'inbox.sig')]) (sy ~[(rv 0 /boards) (rf 0 / %registry)])]
+    [~ (sy ~[(rf 0 / %'inbox.sig')]) (silt [(rf 0 / %registry) open])]
   ?~  how  (pure:m ~)
   (trace:io [leaf+"%furum: the registry refused the public grant" u.how])
 ::  ==  the writer
@@ -249,6 +269,7 @@
       %sent   ;<(* bind:m (cull-soft:io (rf 0 /outbox name.u.o)) (pure:m ~))
       %act    (do-act who.u.o action.u.o)
       %reg    (do-reg +.u.o)
+      %sweep  ;<(~ bind:m sweep-all (pure:m ~))
   ==
 ::  +refuse: a refused op, as the writer's last outcome at /tr/last
 ::
@@ -295,18 +316,27 @@
     (refuse 404 'board not found')
   ;<  now=@da  bind:m  get-time:io
   ;<  old=(map path *)  bind:m  (read-grubs 0 u.name)
+  ::  who paid is kept apart from the board; unreadable, it is refused
+  ::  rather than written back empty
+  ;<  mem=(each (map @p @da) @t)  bind:m  (read-members 0 u.name)
+  ?:  ?=(%| -.mem)  (refuse 500 p.mem)
   =/  have=(each (unit board) @t)
     ?:  =(~ old)  &+~
     =/  r  (load:fb ~(tap by old))
-    ?:(?=(%| -.r) r &+`p.r)
+    ?:(?=(%| -.r) r &+`p.r(paid p.mem))
   ?:  ?=(%| -.have)  (refuse 500 p.have)
   ;<  lim=limits  bind:m  read-limits
   =/  r  (act:fb who our now action p.have lim)
   ?:  ?=(%| -.r)  (refuse p.r)
   ;<  ~  bind:m  (store u.name old brd.p.r)
+  ;<  ~  bind:m  (store-members u.name p.mem brd.p.r)
   ;<  ~  bind:m
     ?:  =(lim lim.p.r)  (pure:(fiber:fiber:nexus ,~) ~)
     (over:io (rf 0 / %limits) [[/ %noun] [%1 lim.p.r]])
+  ;<  ~  bind:m
+    ?.  ?=(?(%create-board %delete-board %set-payment %grant-paid %revoke-paid %set-role %remove-role) -.action)
+      (pure:(fiber:fiber:nexus ,~) ~)
+    (sync-access u.name p.have brd.p.r)
   ::  and whoever it concerns hears of it
   =/  notes=(list note-out)  ?~(brd.p.r ~ (notes-for:fb who action u.brd.p.r))
   |-  ^-  form:m
@@ -337,6 +367,9 @@
     %upvote           `name.action
     %downvote         `name.action
     %remove-vote      `name.action
+    %set-payment      `name.action
+    %grant-paid       `name.action
+    %revoke-paid      `name.action
   ==
 ::  +store: a board's grubs brought from `old` to `new`: a new board is
 ::  made whole, a deleted one culled whole, and otherwise only the grubs
@@ -573,6 +606,184 @@
         ['mark' s+(spat (snoc path.mark name.mark))]
     ==
   (over:io (rf 0 /tr %inbox) [[/ %json] [%a (scag 100 `(list json)`[row ?:(?=([%a *] old) p.old ~)])]])
+::  ==  who may read what
+::
+::  +public-roads: what every ship may read of the boards we host
+::  (+open-paths), as roads
+::
+++  public-roads
+  |=  names=(list @ta)
+  =/  m  (fiber:fiber:nexus ,(list road:tarball))
+  ^-  form:m
+  =|  boards=(list [@ta ?])
+  |-  ^-  form:m
+  ?~  names  (pure:m (turn (open-paths:fr boards) |=(p=path (rv 0 p))))
+  ;<  a=(unit board)  bind:m  (read-access i.names)
+  ::  a board whose card won't read counts as paid: closed, not open
+  $(names t.names, boards [[i.names |(?=(~ a) ?=(^ payment.u.a))] boards])
+::  +sync-access: after an action that may change who reads what. A board
+::  made or gone, or turned paid or free, changes the public set; any of
+::  them may change a paid board's group.
+::
+++  sync-access
+  |=  [name=board-name old=(unit board) new=(unit board)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  =/  was=?  ?~(old | ?=(^ payment.u.old))
+  =/  is=?  ?~(new | ?=(^ payment.u.new))
+  ;<  ~  bind:m  ?.(&(was !is) (pure:m ~) (drop-group name))
+  ;<  ~  bind:m
+    ?:  &(=(was is) =(?=(~ old) ?=(~ new)))  (pure:m ~)
+    grant-public
+  sweep-all
+::  +sweep-all: every paid board's group made to hold its moderators and
+::  the members whose time hasn't run out, and when the next one will;
+::  run at each rise (a registrant's grants don't outlive it), after an
+::  action that changes who may read, and when a member runs out
+::
+++  sweep-all
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  now=@da  bind:m  get-time:io
+  ;<  names=(list @ta)  bind:m  (board-names 0)
+  =|  next=(unit @da)
+  |-  ^-  form:m
+  ?~  names  (over:io (rf 0 / %sweep) [[/ %noun] [%1 next]])
+  ;<  a=(unit board)  bind:m  (read-access i.names)
+  ?.  &(?=(^ a) ?=(^ payment.u.a))  $(names t.names)
+  ;<  ~  bind:m  (set-group i.names (group-ships:fr u.a now))
+  =/  n=(unit @da)  (next-expiry:fr u.a now)
+  $(names t.names, next ?~(n next ?~(next n `(min u.n u.next))))
+::  +read-access: what decides who reads a board: its price, its roles
+::  and its members; ~ without a card or with members that won't read
+::
+++  read-access
+  |=  name=@ta
+  =/  m  (fiber:fiber:nexus ,(unit board))
+  ^-  form:m
+  ;<  c=(unit *)  bind:m  (read-noun (rf 0 /boards/[name]/pub %card))
+  ;<  r=(unit *)  bind:m  (read-noun (rf 0 /boards/[name]/pub %roles))
+  ;<  mem=(each (map @p @da) @t)  bind:m  (read-members 0 name)
+  ?~  c  (pure:m ~)
+  ?:  ?=(%| -.mem)  (pure:m ~)
+  =|  b=board
+  %-  pure:m
+  :-  ~
+  %=  b
+    payment  (fall (mole |.(+>:;;([%2 board-info (unit payment-config)] u.c))) ~)
+    roles    (fall (mole |.(+:;;([%1 (map @p role)] (need r)))) ~)
+    paid     p.mem
+  ==
+::  +read-members: who paid for a board, until when; none when there is
+::  no record, and why when the record won't read
+::
+++  read-members
+  |=  [up=@ud name=@ta]
+  =/  m  (fiber:fiber:nexus ,(each (map @p @da) @t))
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf up /members name))
+  ?~  n  (pure:m &+~)
+  ?~  v=(mole |.(+:;;([%1 (map @p @da)] u.n)))  (pure:m |+'unreadable: members')
+  (pure:m &+u.v)
+::
+++  store-members
+  |=  [name=board-name old=(map @p @da) new=(unit board)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ?~  new
+    ;<  *  bind:m  (cull-soft:io (rf 0 /members name))
+    (pure:m ~)
+  ?:  =(old paid.u.new)  (pure:m ~)
+  (over:io (rf 0 /members name) [[/ %noun] [%1 paid.u.new]])
+::  +set-group: a paid board's usergroup: its ships written, then its
+::  weir sent through the registry, which recomputes every peer's weir
+::  at once (a written group waits for each peer's next contact). A ship
+::  that refused the usergroup road keeps paid boards closed.
+::
+++  grp  |=(name=@ta ^-(@ta (crip "furum-{(trip name)}")))
+++  grp-dir  |=(name=@ta ^-(path /sys/ames/usergroups/(crip "{(trip (grp name))}.grp")))
+::
+++  set-group
+  |=  [name=@ta ships=(set @p)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  =/  gdir=path  (grp-dir name)
+  ;<  *  bind:m  (write-soft [%& %| gdir] &+empty-dir:loader |)
+  ;<  ok=?  bind:m  (write-soft [%& %& gdir %'who.ships'] |+[[[/ %ships] ships] ~] &)
+  ?.  ok  (trace:io ~[leaf+"%furum: no usergroup road; paid boards stay closed to members"])
+  ;<  how=(unit tang)  bind:m
+    (reg-how-soft:io /[(grp name)] [~ ~ (sy ~[(rv 0 /boards/[name]/content)])])
+  ?~  how  (pure:m ~)
+  (trace:io [leaf+"%furum: the registry refused a member group" u.how])
+::  +drop-group: a board no longer paid, or gone: its grant taken back,
+::  then its group
+::
+++  drop-group
+  |=  name=@ta
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  *  bind:m  (reg-how-soft:io /[(grp name)] [~ ~ ~])
+  ;<  *  bind:m  (cull-soft:io [%& %| (grp-dir name)])
+  (pure:m ~)
+::  +write-soft: a make that answers | when refused, where make-soft:io
+::  fails the fiber on a veto
+::
+++  write-soft
+  |=  [=road:tarball =make:nexus force=?]
+  =/  m  (fiber:fiber:nexus ,?)
+  ^-  form:m
+  ;<  =wire  bind:m  (nonce:io /make)
+  ;<  ~  bind:m  (send-dart:io %node wire road %make force %.n make)
+  |=  input:fiber:nexus
+  :+  ~  q.state
+  ?+  in  [%skip ~]
+      ~  [%wait ~]
+      [~ %veto *]  [%done |]
+      [~ %made * *]
+    ?.  =(wire wire.u.in)  [%skip ~]
+    [%done =(~ err.u.in)]
+  ==
+::  ==  the sweeper
+::
+::  It keeps /sweep, which the writer rewrites with the next time a
+::  member runs out, sleeps until then, and asks the writer to sweep. A
+::  writer that won't take the ask (waiting after a crash) is asked again
+::  in a minute, never at once.
+::
+++  sweeper
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf 0 / %sweep))
+  =/  next=(unit @da)  (fall (mole |.(+:;;([%1 (unit @da)] (need n)))) ~)
+  ;<  now=@da  bind:m  get-time:io
+  ?:  &(?=(^ next) (lte u.next now))
+    ;<  err=(unit tang)  bind:m  (poke-soft:io (rf 0 / %'main.sig') [[/furum %ask] `op`[%sweep ~]])
+    ?^  err
+      ;<  ~  bind:m  (sleep:io ~m1)
+      sweeper
+    ;<  *  bind:m  ((with-timeout:io (unit deny)) /sa ~m1 take-done)
+    sweeper
+  ;<  ~  bind:m  ?~(next (pure:m ~) (set-timer:io /sw u.next))
+  ;<  ~  bind:m  take-sweep
+  ;<  ~  bind:m  ?~(next (pure:m ~) (cancel-timer:io /sw))
+  sweeper
+::  +take-sweep: /sweep changed, or its time came
+::
+++  take-sweep
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  |=  input:fiber:nexus
+  :+  ~  q.state
+  ?+  in  [%skip ~]
+      ~  [%wait ~]
+      [~ %news * *]
+    ?.  =(/s wire.u.in)  [%skip ~]
+    [%done ~]
+      [~ %poke * *]
+    ?.  =([/ %timer-wake] p.sage.u.in)  [%skip ~]
+    ?.  =(/sw (fall (mole |.(!<(path q.sage.u.in))) /))  [%skip ~]
+    [%done ~]
+  ==
 ::  ==  reading the tree; `up` is the reader's depth below the nexus root
 ::
 ::  +read-grubs: a board directory's grubs by path, ~ when there is none
@@ -736,16 +947,27 @@
   (~(uni by acc) (wave-files (snoc pre n) k))
 ::  ==  the follower: one per board on another ship this ship reads
 ::
-::  It keeps the host's board directory and mirrors it into
-::  cache/<host>/<name>, the same grubs in the same places, so a page
-::  reads a mirror with the loader a hosted board uses. It alone writes
-::  its mirror. It starts with a whole copy, then on each wave reads
-::  only the grubs whose version moved. Every ten minutes it copies the
-::  whole board again: a host that drops a follower never says so, and
-::  news missed in between would otherwise stay missed. A keep that
-::  fails is tried again after 1, 2, 4 and up to 60 minutes.
+::  It keeps the host's board and mirrors it into cache/<host>/<name>,
+::  the same grubs in the same places, so a page reads a mirror with the
+::  loader a hosted board uses. It alone writes its mirror.
 ::
-+$  fev  $%([%news =wave:nexus] [%fell ~] [%wake ~] [%sync ~])
+::  A board is two keeps. pub/ (card, roles, conf) is anyone's; a keep
+::  that fails is tried again after 1, 2, 4 and up to 60 minutes.
+::  content/ is anyone's on a free board and its members' on a paid one:
+::  refused, the mirror loses its content and marks the board closed to
+::  us (/access), and the page shows the paywall.
+::
+::  Each part starts as a whole copy; then each wave brings only the
+::  grubs whose version moved. Every ten minutes (two, while a board is
+::  closed to us) it copies again and asks again: a host that drops a
+::  reader never says so, and one that lets a reader in doesn't either.
+::
++$  fev
+  $%  [%news part=?(%pub %content) =wave:nexus]
+      [%fell part=?(%pub %content)]
+      [%wake ~]
+      [%sync ~]
+  ==
 ::
 ++  follow
   |=  [host=@p name=board-name tries=@ud]
@@ -754,31 +976,44 @@
   ;<  base=path  bind:m  (install-of 2 host)
   =/  there=path  (remote host base /boards/[name])
   =/  mine=path  /cache/(scot %p host)/[name]
-  ;<  w=(unit wave:nexus)  bind:m  (keep-soft:io /f [%& %| there] ~ ~s30)
+  ;<  w=(unit wave:nexus)  bind:m  (keep-soft:io /fp [%& %| (weld there /pub)] ~ ~s30)
   ?~  w
     ;<  ~  bind:m  (sleep:io (min ~h1 (mul ~m1 (bex (min tries 6)))))
     (follow host name +(tries))
-  ;<  ~  bind:m  (sync-all there mine)
-  =/  last=(map path cass:clay)  (wave-files / u.w)
+  ;<  ~  bind:m  (sync-part there mine /pub)
+  ;<  c=(unit wave:nexus)  bind:m  (open-content there mine)
+  =/  lp=(map path cass:clay)  (wave-files /pub u.w)
+  =/  lc=(map path cass:clay)  ?~(c ~ (wave-files /content u.c))
+  =/  kept=?  ?=(^ c)
   |-
   ;<  now=@da  bind:m  get-time:io
-  ;<  ~  bind:m  (set-timer:io /hb (add now ~m10))
+  ;<  ~  bind:m  (set-timer:io /hb (add now ?:(kept ~m10 ~m2)))
   ;<  e=fev  bind:m  take-fev
+  ;<  ~  bind:m  (cancel-timer:io /hb)
   ?-    -.e
-      %fell  (follow host name 0)
       %news
-    ;<  ~  bind:m  (cancel-timer:io /hb)
-    =/  next=(map path cass:clay)  (wave-files / wave.e)
-    ;<  ~  bind:m  (sync-changed there mine last next)
-    $(last next)
+    ?:  ?=(%pub part.e)
+      =/  next  (wave-files /pub wave.e)
+      ;<  ~  bind:m  (sync-changed there mine lp next)
+      $(lp next)
+    =/  next  (wave-files /content wave.e)
+    ;<  ~  bind:m  (sync-changed there mine lc next)
+    $(lc next)
+  ::
+      %fell
+    ?:  ?=(%pub part.e)  (follow host name 0)
+    $(kept |, lc ~)
   ::
       ?(%wake %sync)
-    ;<  ~  bind:m  (cancel-timer:io /hb)
-    ;<  ~  bind:m  (sync-all there mine)
-    $
+    ;<  ~  bind:m  (sync-part there mine /pub)
+    ?:  kept
+      ;<  ok=?  bind:m  (read-content there mine)
+      $(kept ok, lc ?:(ok lc ~))
+    ;<  c=(unit wave:nexus)  bind:m  (open-content there mine)
+    $(kept ?=(^ c), lc ?~(c ~ (wave-files /content u.c)))
   ==
-::  +take-fev: what a follower waits for: news or a fell on its keep, its
-::  heartbeat, or a local poke asking it to copy the board again now
+::  +take-fev: what a follower waits for: news or a fell on either keep,
+::  its heartbeat, or a local poke asking it to look again now
 ::
 ++  take-fev
   =/  m  (fiber:fiber:nexus ,fev)
@@ -788,31 +1023,63 @@
   ?+  in  [%skip ~]
       ~  [%wait ~]
       [~ %news * *]
-    ?.  =(/f wire.u.in)  [%skip ~]
-    [%done %news wave.u.in]
+    ?:  =(/fp wire.u.in)  [%done %news %pub wave.u.in]
+    ?:  =(/fc wire.u.in)  [%done %news %content wave.u.in]
+    [%skip ~]
       [~ %fell *]
-    ?.  =(/f wire.u.in)  [%skip ~]
-    [%done %fell ~]
+    ?:  =(/fp wire.u.in)  [%done %fell %pub]
+    ?:  =(/fc wire.u.in)  [%done %fell %content]
+    [%skip ~]
       [~ %poke * *]
     ?.  =([/ %timer-wake] p.sage.u.in)  [%done %sync ~]
     ?.  =(/hb (fall (mole |.(!<(path q.sage.u.in))) /))  [%skip ~]
     [%done %wake ~]
   ==
-::  +sync-all: the whole board read again and the mirror brought to it.
-::  A board that won't come (the host is away, or shut us out) leaves
-::  the mirror as it was.
+::  +open-content: read a board's content if we may, and keep it
 ::
-++  sync-all
+++  open-content
   |=  [there=path mine=path]
+  =/  m  (fiber:fiber:nexus ,(unit wave:nexus))
+  ^-  form:m
+  ;<  ok=?  bind:m  (read-content there mine)
+  ?.  ok  (pure:m ~)
+  (keep-soft:io /fc [%& %| (weld there /content)] ~ ~s30)
+::  +read-content: a board's content copied whole, or, refused, the
+::  mirror's content gone and the board marked closed to us. A host that
+::  doesn't answer leaves the mirror as it was.
+::
+++  read-content
+  |=  [there=path mine=path]
+  =/  m  (fiber:fiber:nexus ,?)
+  ^-  form:m
+  ;<  vw=(unit (unit view:nexus))  bind:m
+    ((with-timeout:io (unit view:nexus)) /c ~s60 (peek-soft:io [%& %| (weld there /content)] ~))
+  ?~  vw  (pure:m |)
+  ?.  ?=([~ %ball *] u.vw)
+    ;<  *  bind:m  (cull-soft:io (rv 2 (weld mine /content)))
+    ;<  ~  bind:m  (over:io (rf 2 mine %access) [[/ %noun] [%1 |]])
+    (pure:m |)
+  ;<  ~  bind:m  (mirror-part mine /content (ball-grubs ball.u.u.vw))
+  ;<  ~  bind:m  (over:io (rf 2 mine %access) [[/ %noun] [%1 &]])
+  (pure:m &)
+::  +sync-part: one part of the board (pub/ or content/) copied whole
+::
+++  sync-part
+  |=  [there=path mine=path part=path]
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
   ;<  vw=(unit (unit view:nexus))  bind:m
-    ((with-timeout:io (unit view:nexus)) /all ~s60 (peek-soft:io [%& %| there] ~))
+    ((with-timeout:io (unit view:nexus)) /all ~s60 (peek-soft:io [%& %| (weld there part)] ~))
   ?.  ?=([~ ~ %ball *] vw)  (pure:m ~)
-  =/  theirs=(map path *)  (ball-grubs ball.u.u.vw)
-  ;<  have=(map path *)  bind:m  (read-dir 2 mine)
-  ?:  =(~ have)  (make:io (rv 2 mine) &+(board-bole theirs))
-  (mirror mine have theirs)
+  (mirror-part mine part (ball-grubs ball.u.u.vw))
+::
+++  mirror-part
+  |=  [mine=path part=path got=(map path *)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  have=(map path *)  bind:m  (read-dir 2 (weld mine part))
+  =/  pre  |=(g=(map path *) (malt (turn ~(tap by g) |=([p=path v=*] [(weld part p) v]))))
+  (mirror mine (pre have) (pre got))
 ::  +sync-changed: only the grubs whose version moved, read one by one
 ::
 ++  sync-changed
@@ -1119,8 +1386,19 @@
     ?:  |(local !(valid-board-name:fl name))  (err c 404 "board not found")
     ;<  ~  bind:m  (tell [%watch u.host name])
     (send-page id.c 200 (render-loading:fl (weld "/apps/furum" (trip (spat site.c))) dark.c))
-  =/  brd=board  u.p.b
+  ::  who paid is kept apart from a board we host; the mod page lists them
+  ;<  mem=(each (map @p @da) @t)  bind:m
+    ?.  local  (pure:(fiber:fiber:nexus ,(each (map @p @da) @t)) &+~)
+    (read-members 1 name)
+  =/  brd=board  u.p.b(paid ?:(?=(%& -.mem) p.mem ~))
   =/  mod=?  (is-mod:fr our.c brd)
+  ::  another ship's paid board that is closed to us: its paywall
+  ;<  closed=?  bind:m
+    ?:  |(local ?=(~ payment.brd))  (pure:(fiber:fiber:nexus ,?) |)
+    ;<  n=(unit *)  bind:(fiber:fiber:nexus ,?)  (read-noun (rf 1 /cache/(scot %p u.host)/[name] %access))
+    (pure:(fiber:fiber:nexus ,?) !=(`[%1 &] n))
+  ?:  &(closed ?=(^ payment.brd))
+    (send-page id.c 200 (render-paywall:fl u.host info.brd u.payment.brd ~ dark.c %.n))
   ?+    rest  (err c 404 "page not found")
       ~
     ;<  s=seen  bind:m  (read-seen 1)
@@ -1236,11 +1514,11 @@
   =/  base=tape  "/apps/furum/b/{(scow %p u.host)}/{(trip name)}"
   ?:  ?=([%follow ~] rest)    (ask-then c [%follow-board u.host name] base)
   ?:  ?=([%unfollow ~] rest)  (ask-then c [%unfollow-board u.host name] base)
-  ::  paid boards come in phase 5
-  ?:  ?=(?([%pay ~] [%pay-lightning ~] [%mod %payment ~] [%mod %melt ~]) rest)
-    (err c 501 "paid boards arrive in a later release of furum")
+  ::  paying comes in phase 5
+  ?:  ?=(?([%pay ~] [%pay-lightning ~] [%mod %melt ~]) rest)
+    (err c 501 "paying for boards arrives in a later release of furum")
   ::  what only the host may change
-  ?:  &(!local ?=([%mod ?(%prune %edit-info %public %delete %register) ~] rest))
+  ?:  &(!local ?=([%mod ?(%prune %edit-info %public %delete %register %payment %grant %revoke) ~] rest))
     (err c 403 "only the board's host can change that")
   ?:  ?=([%mod %register ~] rest)
     ;<  b=(each (unit board) @t)  bind:m  (read-board our.c name)
@@ -1257,7 +1535,7 @@
     ;<  b=(each (unit board) @t)  bind:m  (read-board our.c name)
     ?.  ?=([%& ~ *] b)  (err c 404 "board not found")
     (ask-then c [%set-public name !public.info.u.p.b] "{base}/mod")
-  =/  r  (form-action name rest f back base)
+  =/  r  (form-action name rest f back base now.c)
   ?:  ?=(%| -.r)  (err c code.p.r why.p.r)
   ?:  local  (ask-then c p.r)
   (send-then c u.host name p.r)
@@ -1265,7 +1543,7 @@
 ::  browser goes after it
 ::
 ++  form-action
-  |=  [name=board-name rest=(list @t) f=$-(@t @t) back=tape base=tape]
+  |=  [name=board-name rest=(list @t) f=$-(@t @t) back=tape base=tape now=@da]
   ^-  (each [=action to=tape] [code=@ud why=tape])
   =/  txt  |=(k=@t ?:(=('' (f k)) ~ `(f k)))
   =/  num  |=([k=@t d=@ud] (fall (rush (f k) dum:ag) d))
@@ -1300,6 +1578,26 @@
       [%mod %remove-role ~]
     ?~  who=(slaw %p (f 'who'))  |+[400 "that is not a ship name"]
     &+[[%remove-role name u.who] "{base}/mod"]
+  ::  a price makes the board paid; unticked, free again
+      [%mod %payment ~]
+    =/  mint=@t  (f 'mint-url')
+    :+  %&
+      :+  %set-payment  name
+      ?.  =('on' (f 'enabled'))  ~
+      `[(num 'price' 0) (mul ~d1 (max 1 (num 'interval' 30))) ?:(=('' mint) ~ `mint)]
+    "{base}/mod?saved=payment"
+  ::
+      [%mod %grant ~]
+    ?~  who=(slaw %p (f 'who'))  |+[400 "that is not a ship name"]
+    ::  minutes, for a short trial, when given; else days
+    =/  for=@dr
+      ?:  =('' (f 'minutes'))  (mul ~d1 (max 1 (num 'days' 30)))
+      (mul ~m1 (max 1 (num 'minutes' 1)))
+    &+[[%grant-paid name u.who (add now for)] "{base}/mod"]
+  ::
+      [%mod %revoke ~]
+    ?~  who=(slaw %p (f 'who'))  |+[400 "that is not a ship name"]
+    &+[[%revoke-paid name u.who] "{base}/mod"]
   ::
       [@ %edit ~]
     ?~  pid  |+[404 "post not found"]

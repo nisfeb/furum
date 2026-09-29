@@ -146,6 +146,7 @@
       [%melt-to-lightning name=board-name mint=@t invoice=@t]
       [%request-lightning-invoice name=board-name nonce=@t]
       [%revoke-paid name=board-name who=@p]
+      [%grant-paid name=board-name who=@p until=@da]
       [%clear-wallet name=board-name]
       ::  subscriptions
       [%resub host=@p name=board-name]
@@ -233,10 +234,13 @@
   ==
 ::
 ::  what the ball stores, one board to a directory (lib/furum-board):
-::    card  roles  conf  content/{pins,sidebar}  content/{posts,threads,votes}/b<k>
-::  each grub is [/ %noun]: [%1 <shape>], clammed by its reader. Posts,
-::  their threads and their votes sit in parallel buckets of 100 by post
-::  id, so a vote rewrites a small votes bucket and not the posts
+::    pub/{card,roles,conf}  content/{pins,sidebar}  content/{posts,threads,votes}/b<k>
+::  pub/ is anyone's to read; content/ too on a free board, and on a paid
+::  one its members' and moderators'. Who paid until when is kept apart,
+::  in members/<name>. Each grub is [/ %noun]: [%<version> <shape>],
+::  clammed by its reader. Posts, their threads and their votes sit in
+::  parallel buckets of 100 by post id, so a vote rewrites a small votes
+::  bucket and not the posts
 ::
 +$  post-core  [id=post-id author=@p title=@t url=(unit @t) body=(unit @t) created=@da]
 +$  comment-core  [id=comment-id parent=(unit comment-id) author=@p body=@t created=@da]

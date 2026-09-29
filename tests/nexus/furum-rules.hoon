@@ -145,6 +145,32 @@
     (expect-eq !>(%.n) !>((sane-comment:fr '')))
   ==
 ::
+::  a paid board's group: its moderators and its members whose time has
+::  not run out; the host needs none. The next expiry is the soonest
+::  still to come
+::
+++  test-group
+  =/  now  ~2026.1.10
+  =/  b=board
+    =/  b  brd
+    %=  b
+      roles  (my ~[[~wes %mod] [~bus %poster]])
+      paid   (my ~[[~nec (add now ~d1)] [~lur (sub now ~d1)] [~dev (add now ~h1)] [~fed now]])
+    ==
+  ;:  weld
+    (expect-eq !>((sy ~[~wes ~nec ~dev])) !>((group-ships:fr b now)))
+    (expect-eq !>(`(add now ~h1)) !>((next-expiry:fr b now)))
+    (expect-eq !>(~) !>((next-expiry:fr brd now)))
+  ==
+::
+::  every ship reads each board's pub/, and a free board's content/; a
+::  paid board's content never
+::
+++  test-open-paths
+  %+  expect-eq
+    !>(`(list path)`~[/boards/f/pub /boards/f/content /boards/p/pub])
+  !>((open-paths:fr ~[[%f |] [%p &]]))
+::
 ::  a post the browser flags as cross-site never acts for the owner; a
 ::  same-origin one, or one with no such header, does
 ::

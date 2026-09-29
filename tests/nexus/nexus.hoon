@@ -13,6 +13,38 @@
 ++  poke  |=([=from:fiber:nexus =sage:tarball] ^-(intake:ft [%poke from sage]))
 ++  from-ship  |=(s=@p ^-(from:fiber:nexus [0 /sys/ames/ships/(scot %p s) %x]))
 ++  op  |=(n=* ^-(sage:tarball [[/furum %op] [%noun n]]))
+::  answer the next n reads with nothing
+++  nones
+  |=  [n=@ud t=trail:ft]
+  ^-  trail:ft
+  ?:  =(0 n)  t
+  $(n (dec n), t (answer-peek:ft a-world:ft t [%none ~]))
+::  the writer risen: its grants and its sweep each list the boards first
+++  writer  ^-(trail:ft (nones 2 (start a-world:ft [~ %'main.sig'] ~)))
+::  only what a run did after `a`
+++  new  |=([a=trail:ft b=trail:ft] ^-(trail:ft b(darts (slag (lent darts.a) darts.b))))
+::  answer each read, by what it reads, while the fiber waits on one
+::  (at most n)
+++  serve
+  |=  [n=@ud t=trail:ft f=$-(road:tarball view:nexus)]
+  ^-  trail:ft
+  ?:  =(0 n)  t
+  ?.  ?=(%wait end.t)  t
+  ?~  darts.t  t
+  ?.  ?=([%node * * %peek *] (rear darts.t))  t
+  $(n (dec n), t (answer-peek:ft a-world:ft t (f (rear (peeks:ft t)))))
+++  file  |=(n=* ^-(view:nexus [%file *cass:clay [[/ %noun] %& !>(n)]]))
+::  a host of a free board f and a paid board p: what each read finds
+++  two-boards
+  |=  r=road:tarball
+  ^-  view:nexus
+  ?:  =(r (rv 0 /boards))
+    [%ball *wave:nexus (as-ball (my ~[[/f/pub/card ~] [/p/pub/card ~]]))]
+  ?:  =(r (rf 0 /boards/f/pub %card))  (file [%2 *board-info ~])
+  ?:  =(r (rf 0 /boards/p/pub %card))  (file [%2 *board-info `[100 ~d30 ~]])
+  [%none ~]
+::  every registry action a run sent
+++  reg-acts  |=(t=trail:ft (turn (pokes:ft t [/usergroups %registry-action]) tail))
 ++  jailed  ^-(world:ft =/(w a-world:ft w(refuse ~[/sys])))
 ++  made-files
   |=  t=trail:ft
@@ -35,18 +67,18 @@
   ?.  ?=([%node * * %make *] d)  ~
   `road.d
 ::
-::  the writer opens exactly the inbox to other ships, and asks for it
-::  itself: the registry drops a grant from any other fiber (spike B). A
-::  grant naming main.sig would let any ship write the boards
+::  the writer opens exactly the inbox to other ships' pokes, and asks
+::  for it itself: the registry drops a grant from any other fiber (spike
+::  B). A grant naming main.sig would let any ship write the boards
 ::
 ++  test-writer-grants-the-inbox
-  =/  t  (start a-world:ft [~ %'main.sig'] ~)
+  =/  t  (nones 1 (start a-world:ft [~ %'main.sig'] ~))
   ;:  weld
     (expect-eq !>(%wait) !>(end.t))
     %+  expect-eq
       !>  ^-  (list *)
       :~  [%register [~ %'main.sig'] ~]
-          [%how /public [~ (sy ~[(rf 0 / %'inbox.sig')]) (sy ~[(rv 0 /boards) (rf 0 / %registry)])]]
+          [%how /public [~ (sy ~[(rf 0 / %'inbox.sig')]) (sy ~[(rf 0 / %registry)])]]
       ==
       !>((turn (pokes:ft t [/usergroups %registry-action]) |=([* n=*] n)))
   ==
@@ -80,7 +112,7 @@
   =/  t  (answer-peek:ft a-world:ft t [%none ~])
   =/  wake  |=(w=wire (poke *from:fiber:nexus [[/ %timer-wake] !>(w)]))
   =/  other  (feed:ft a-world:ft t (wake /other))
-  =/  woke  (feed:ft a-world:ft t (wake /rise))
+  =/  woke  (nones 1 (feed:ft a-world:ft t (wake /rise)))
   ;:  weld
     (expect-eq !>(%wait) !>(end.t))
     (expect-eq !>(~[(rf 0 / %'rise.json')]) !>((made t)))
@@ -100,10 +132,11 @@
       !>(~)
       (poke *from:fiber:nexus (op [%from ~nec [/foo %bar] ~]))
     ==
-  =/  t  (answer-peek:ft a-world:ft t [%none ~])
+  ::  the rise's two board listings, then the inbox ring
+  =/  t  (nones 3 t)
   ;:  weld
     (expect-eq !>(%wait) !>(end.t))
-    (expect-eq !>(~[(rf 0 /tr %inbox)]) !>((made t)))
+    (expect-eq !>(~[(rf 0 / %sweep) (rf 0 /tr %inbox)]) !>((made t)))
   ==
 ::
 ::  the writer takes ops only from this nexus's own fibers. A ship's
@@ -111,7 +144,7 @@
 ::  and a good op from the inbox lands on its own ring
 ::
 ++  test-writer-refuses
-  =/  t0  (start a-world:ft [~ %'main.sig'] ~)
+  =/  t0  writer
   =/  t1  (feed:ft a-world:ft t0 (poke (from-ship ~nec) (op [%from ~bus [/ %x] ~])))
   =/  t2  (feed:ft a-world:ft t1 (poke *from:fiber:nexus (op 'garbage')))
   =/  t3  (feed:ft a-world:ft t2 (poke *from:fiber:nexus [[/ %json] !>(~)]))
@@ -121,22 +154,20 @@
     (expect-eq !>(%wait) !>(end.t4))
     %+  expect-eq
       !>(~[(rf 0 /tr %last) (rf 0 /tr %last) (rf 0 /tr %last) (rf 0 /tr %inbox)])
-      !>((made t4))
+      !>((made (new t0 t4)))
   ==
 ::
 ::  a change another ship asks for and our writer refuses is told back
 ::  to it, through the outbox, never from the writer itself
 ::
 ++  test-refusal-told-back
-  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =/  w  writer
   =.  w
     %^  feed:ft  a-world:ft  w
     %+  poke  *from:fiber:nexus
     [[/furum %op] !>([%from ~nec [/furum %msg] [%act %create-board %b 'B' '' %poster]])]
-  ::  the inbox ring, the board, the rate limits
-  =.  w  (answer-peek:ft a-world:ft w [%none ~])
-  =.  w  (answer-peek:ft a-world:ft w [%none ~])
-  =.  w  (answer-peek:ft a-world:ft w [%none ~])
+  ::  the inbox ring, the board, its members, the rate limits
+  =.  w  (nones 4 w)
   =/  out
     %+  skim  (made-files w)
     |=([r=road:tarball *] ?=([%| @ %& [%outbox ~] @] r))
@@ -149,7 +180,7 @@
 ::  the owner picked
 ::
 ++  test-notes-from-followed
-  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =/  w  writer
   =/  note
     |=  [src=@p url=(unit @t) tags=(set term)]
     %+  feed:ft  a-world:ft
@@ -182,7 +213,7 @@
 ::  mirror; following our own only the feed; unfollowing only the feed
 ::
 ++  test-follow
-  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =/  w  writer
   =/  act
     |=  a=action
     %^  feed:ft  a-world:ft  w
@@ -198,17 +229,17 @@
       :~  [(rf 0 / %feed) [%1 (sy ~[[~nec %b]])]]
           [(rf 0 /follows/~nec %b) [%1 ~]]
       ==
-    !>((made-files theirs))
-    (expect-eq !>(~[[(rf 0 / %feed) [%1 (sy ~[[~zod %b]])]]]) !>((made-files ours)))
+    !>((made-files (new w theirs)))
+    (expect-eq !>(~[[(rf 0 / %feed) [%1 (sy ~[[~zod %b]])]]]) !>((made-files (new w ours))))
     ::  unfollowing what isn't followed changes nothing
-    (expect-eq !>(~) !>((made-files gone)))
+    (expect-eq !>(~) !>((made-files (new w gone))))
   ==
 ::
 ::  a ship that doesn't keep the registry refuses registry actions; one
 ::  that does keeps the entry
 ::
 ++  test-registry-writer
-  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =/  w  writer
   =/  reg
     %^  feed:ft  a-world:ft  w
     (poke *from:fiber:nexus [[/furum %ask] !>([%reg ~nec /apps/furum [%register %b 'B' '']])])
@@ -224,7 +255,122 @@
     %+  expect-eq
       !>  ^-  (list [road:tarball *])
       ~[[(rf 0 / %registry) [%1 (my ~[[%b [%b 'B' '' ~nec ~ |]]]) (my ~[[~nec /apps/furum]]) ~]]]
-    !>((made-files here))
+    !>((made-files (new w here)))
+  ==
+::
+::  a member given access goes into the board's group, which the registry
+::  then opens the board's content to: its content, nothing more
+::
+++  test-grant-writes-group
+  =/  pay=payment-config  [100 ~d30 ~]
+  =/  brd=board
+    =|  b=board
+    b(name.info %b, host.info ~zod, payment `pay)
+  =/  file  |=(n=* [%file *cass:clay [[/ %noun] %& !>(n)]])
+  =/  w0  writer
+  =/  w
+    %^  feed:ft  a-world:ft  w0
+    (poke *from:fiber:nexus [[/furum %op] !>([%act ~zod %grant-paid %b ~nec ~2026.2.1])])
+  ::  the board, its members, the rate limits
+  =.  w  (answer-peek:ft a-world:ft w [%ball *wave:nexus (as-ball (grubs:fb brd))])
+  =.  w  (nones 2 w)
+  ::  the sweep: the boards, then b's card, roles and members
+  =.  w  (answer-peek:ft a-world:ft w [%ball *wave:nexus (as-ball (my ~[[/b/pub/card ~]]))])
+  =.  w  (answer-peek:ft a-world:ft w (file [%2 info.brd `pay]))
+  =.  w  (nones 1 w)
+  =.  w  (answer-peek:ft a-world:ft w (file [%1 (my ~[[~nec ~2026.2.1]])]))
+  =/  grp=path  /sys/ames/usergroups/'furum-b.grp'
+  =/  files  (made-files (new w0 w))
+  ;:  weld
+    %+  expect-eq  !>(`(list *)`~[[%1 (my ~[[~nec ~2026.2.1]])]])
+      !>((murn files |=([r=road:tarball n=*] ?.(=(r (rf 0 /members %b)) ~ `n))))
+    %+  expect-eq  !>(`(list *)`~[(sy ~[~nec])])
+      !>((murn files |=([r=road:tarball n=*] ?.(=(r [%& %& grp %'who.ships']) ~ `n))))
+    %+  expect-eq  !>(`(list *)`~[[%how /furum-b [~ ~ (sy ~[(rv 0 /boards/b/content)])]]])
+      !>((turn (pokes:ft (new w0 w) [/usergroups %registry-action]) tail))
+  ==
+::
+::  at a rise, every ship may read each board's pub/ and the free board's
+::  content/, never the paid one's; the paid board alone gets a group
+::
+++  test-public-grant-set
+  ::  each board's listing, then its card, roles and members, twice:
+  ::  for the public grant, then for the sweep
+  =/  t  (serve 30 (start a-world:ft [~ %'main.sig'] ~) two-boards)
+  =/  groups
+    %+  murn  (made-files t)
+    |=  [r=road:tarball *]
+    ?.  ?=([%& %& [%sys %ames %usergroups @ ~] %'who.ships'] r)  ~
+    `i.t.t.t.path.p.p.r
+  ;:  weld
+    %+  expect-eq
+      !>  %-  sy
+          :~  (rf 0 / %registry)  (rv 0 /boards/f/pub)
+              (rv 0 /boards/f/content)  (rv 0 /boards/p/pub)
+          ==
+    !>  =/  how  (skim (reg-acts t) |=(a=* ?=([%how [%public ~] *] a)))
+        ?~  how  ~
+        =/  a  ;;(registry-action:nexus i.how)
+        ?>(?=(%how -.a) peek.weir.a)
+    (expect-eq !>(~['furum-p.grp']) !>(groups))
+  ==
+::
+::  a board made, or given a price, changes what every ship may read, so
+::  the public grant is sent again; giving access doesn't
+::
+++  test-public-grant-resent
+  =/  w0  writer
+  =/  ask
+    |=  [a=action f=$-(road:tarball view:nexus) n=@ud]
+    %^  serve  n
+      (feed:ft a-world:ft w0 (poke *from:fiber:nexus [[/furum %op] !>([%act ~zod a])]))
+    f
+  =/  public
+    |=  t=trail:ft
+    (lent (skim (reg-acts (new w0 t)) |=(a=* ?=([%how [%public ~] *] a))))
+  ::  a free board b and nothing else, then b with a price
+  =/  free
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rv 0 /boards/b))
+      =|  b=board
+      [%ball *wave:nexus (as-ball (grubs:fb b(name.info %b, host.info ~zod)))]
+    ?:  =(r (rv 0 /boards))  [%ball *wave:nexus (as-ball (my ~[[/b/pub/card ~]]))]
+    ?:  =(r (rf 0 /boards/b/pub %card))  (file [%2 *board-info ~])
+    [%none ~]
+  ;:  weld
+    (expect-eq !>(1) !>((public (ask [%create-board %b 'B' '' %poster] |=(* [%none ~]) 30))))
+    (expect-eq !>(1) !>((public (ask [%set-payment %b `[100 ~d30 ~]] free 30))))
+    (expect-eq !>(0) !>((public (ask [%grant-paid %b ~nec ~2026.2.1] free 30))))
+  ==
+::
+::  the sweeper sleeps until the next member runs out, then asks the
+::  writer to sweep; it never asks before
+::
+++  test-sweeper
+  =/  t0  (start a-world:ft [~ %'sweep.sig'] ~)
+  =/  due
+    |=  at=(unit @da)
+    %^  serve  1
+      (feed:ft a-world:ft t0 [%news /s *wave:nexus])
+    |=(* (file [%1 at]))
+  =/  later  (due `(add now ~h1))
+  =/  asks  |=(t=trail:ft (turn (pokes:ft t [/furum %ask]) tail))
+  ;:  weld
+    ::  a member runs out in an hour: a timer then, no ask yet
+    %+  expect-eq  !>(`(list *)`~[[/sw (add now ~h1)]])
+      !>((skim (turn (pokes:ft later [/ %timer-set]) tail) |=(a=* ?=([[%sw ~] *] a))))
+    (expect-eq !>(~) !>((asks later)))
+    ::  its wake, an hour and more on, or a member already out: the
+    ::  writer is asked
+    %+  expect-eq  !>(`(list *)`~[[%sweep ~]])
+      =/  lw  =/(w a-world:ft w(now (add now ~h2)))
+      =/  woken  (feed:ft lw later (poke *from:fiber:nexus [[/ %timer-wake] !>(/sw)]))
+      !>((asks (answer-peek:ft lw woken (file [%1 `(add now ~h1)]))))
+    (expect-eq !>(`(list *)`~[[%sweep ~]]) !>((asks (due `now))))
+    ::  another timer's wake is not its time
+    %+  expect-eq  !>(~)
+      !>((asks (feed:ft a-world:ft later (poke *from:fiber:nexus [[/ %timer-wake] !>(/other)]))))
   ==
 ::
 ::  the inbox forwards another ship's poke with the sender the transport
@@ -278,7 +424,7 @@
 ++  test-ask-answered
   =/  from  `from:fiber:nexus`[1 /requests %r1]
   =/  back  `road:tarball`[%| 1 %& /requests %r1]
-  =/  t0  (start a-world:ft [~ %'main.sig'] ~)
+  =/  t0  writer
   =/  bad  (feed:ft a-world:ft t0 (poke from [[/furum %ask] [%noun 'garbage']]))
   =/  answer
     |=  n=*
@@ -287,9 +433,9 @@
     %^  feed:ft  a-world:ft  t0
     %+  poke  from
     [[/furum %ask] !>([%act ~zod %create-board %b 'B' '' %poster])]
-  ::  the board, then the rate limits, are read; neither exists yet
-  =/  mk  (answer-peek:ft a-world:ft mk [%none ~])
-  =/  mk  (answer-peek:ft a-world:ft mk [%none ~])
+  ::  the board, its members, the rate limits; then the listings the
+  ::  public grant and the sweep make of the boards
+  =/  mk  (nones 5 mk)
   ;:  weld
     %+  expect-eq  !>(`(list [road:tarball *])`~[[back `[400 'a malformed op']]])
       !>((pokes:ft bad [/furum %done]))
@@ -299,7 +445,7 @@
     ::  a name no board may have is refused as a name, not looked up
     %+  expect-eq  !>(`(list *)`~[`[400 'board names may only use a-z, 0-9 and -']])
       !>((answer [%act ~zod %create-board 'Bad Name' 'x' '' %poster]))
-    (expect-eq !>(~[(rv 0 /boards/b)]) !>((made mk)))
+    (expect-eq !>(~[(rv 0 /boards/b)]) !>((scag 1 (made (new t0 mk)))))
     (expect-eq !>(`(list [road:tarball *])`~[[back ~]]) !>((pokes:ft mk [/furum %done])))
   ==
 ::
@@ -321,10 +467,10 @@
             [1 [1 ~nec 'new' ~ ~ ~2026.1.1 ~ ~ 0]]
         ==
     ==
-  =/  w  (start a-world:ft [~ %'main.sig'] ~)
-  =.  w  (feed:ft a-world:ft w (poke *from:fiber:nexus [[/furum %op] !>([%prune ~])]))
+  =/  w0  writer
+  =/  w  (feed:ft a-world:ft w0 (poke *from:fiber:nexus [[/furum %op] !>([%prune ~])]))
   ::  the listing of /boards, then board b
-  =.  w  (answer-peek:ft a-world:ft w [%ball *wave:nexus (as-ball (my ~[[/b/card ~]]))])
+  =.  w  (answer-peek:ft a-world:ft w [%ball *wave:nexus (as-ball (my ~[[/b/pub/card ~]]))])
   =.  w  (answer-peek:ft a-world:ft w [%ball *wave:nexus (as-ball (grubs:fb brd))])
   ;:  weld
     %+  expect-eq  !>(`(list [road:tarball *])`~[[(rf 0 / %'main.sig') [%prune ~]]])
@@ -334,7 +480,7 @@
     %+  expect-eq
       !>  ^-  (list [road:tarball *])
       ~[[(rf 0 /boards/b/content/posts %b0) [%1 (my ~[[1 `post-core`[1 ~nec 'new' ~ ~ ~2026.1.1]]])]]]
-    !>((made-files w))
+    !>((made-files (new w0 w)))
   ==
 ::
 ::  a crash waits 1, 2, 4 minutes, up to an hour; two quiet hours start
