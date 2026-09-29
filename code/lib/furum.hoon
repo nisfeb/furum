@@ -2207,7 +2207,7 @@
       ;h4: Delete Board
       ;p.me: Permanently delete this board and unregister it. This cannot be undone.
       ;form(method "post", action "{board-path}/mod/delete", onsubmit "return confirm('Are you sure you want to delete this board? This cannot be undone.')")
-        ;input.btn(type "submit", value "delete board", style "background: #c00; color: #fff");
+        ;input.btn(type "submit", value "delete board", style "background: var(--error); color: var(--on-error)");
       ==
     ==
   =/  paid-list=(list [@p @da])
@@ -2771,7 +2771,7 @@
       ;+  ?:  =('' name.t)  ;span;
           ;form(method "post", action "/apps/furum/theme/delete")
             ;input(type "hidden", name "id", value (trip id.t));
-            ;input.btn(type "submit", value "delete this theme", style "background: #c00; color: #fff");
+            ;input.btn(type "submit", value "delete this theme", style "background: var(--error); color: var(--on-error)");
           ==
       ;script: {(trip theme-preview-js)}
     ==

@@ -1,12 +1,15 @@
 ::  lib/furum-theme: furum's look, as talon draws its own.
 ::
 ::  A theme is five colours a person picks (primary, secondary, tertiary,
-::  background, surface) and whether it is dark; every other colour a
-::  page uses is derived from them by talon's rules (its
-::  ui/theme/CustomTheme.kt), so a theme made in talon reads the same
-::  here. An accent, when on, repaints the primary colour. The built-in
-::  theme is furum's own, light and dark. A page asks for its colours by
-::  role, as CSS variables; +draw writes them.
+::  background, surface), whether it is dark, and six more it may also
+::  set (+more: text, muted text, raised surfaces, errors, the
+::  selection, links). Every colour a page uses that the theme does not
+::  set is derived by talon's rules (its ui/theme/CustomTheme.kt), so a
+::  theme made in talon reads the same here. Links it leaves unset are
+::  talon's link blue, not its secondary. An accent, when on, repaints
+::  the primary colour. The built-in theme is furum's own, light and
+::  dark. A page asks for its colours by role, as CSS variables; +draw
+::  writes them.
 ::
 ::  ponytail: talon blends colours in Oklab (Compose's lerp), this in
 ::  sRGB, so a derived shade can differ from talon's by a little; the
@@ -24,7 +27,31 @@
       tertiary=@t
       background=@t
       surface=@t
+      =more
   ==
+::  what a theme may also set, each ~ where it is worked out: the text,
+::  the quieter text, raised surfaces (inputs, tabs), errors, the
+::  selection, links
++$  more
+  $:  text=(unit @t)
+      muted=(unit @t)
+      raised=(unit @t)
+      error=(unit @t)
+      selection=(unit @t)
+      link=(unit @t)
+  ==
+::  a theme as furum kept one before +more (its prefs at %3)
++$  theme-5
+  $:  id=@t
+      name=@t
+      dark=?
+      primary=@t
+      secondary=@t
+      tertiary=@t
+      background=@t
+      surface=@t
+  ==
+++  widen  |=(t=theme-5 ^-(theme [id.t name.t dark.t primary.t secondary.t tertiary.t background.t surface.t *more]))
 ::  the saved themes, and the one in use (~: the built-in)
 +$  themes  [list=(list theme) active=(unit @t)]
 ::  an accent, as talon keeps it: on (unset reads as off), and where its
@@ -102,6 +129,8 @@
     8.714  8.796  8.879  8.963  9.047  9.131  9.216  9.301  9.387  9.473  9.560  9.647  9.734  9.823  9.911  10.000
   ==
 ::
+::  talon's link colour, for a theme that sets none
+++  link-blue  0x29.62ff
 ++  ink    0x1c.1917
 ++  paper  0xfa.faf9
 ++  white  0xff.ffff
@@ -124,6 +153,7 @@
         ['link' 0x8b.1a1a]  ['side-link' 0xcc.2020]  ['tertiary' 0xcc.8020]
         ['pin' 0xf5.f0e0]  ['note' 0xfd.f5e6]  ['on-note' 0x1a.1a2e]  ['wallet' 0xf0.f9ff]
         ['hd' 0xcc.2020]  ['hd-text' 0xff.ffff]  ['hd-nav' 0xff.dede]
+        ['error' 0xcc.0000]  ['on-error' 0xff.ffff]
     ==
   :~  ['bg' 0xa.0a14]  ['text' 0xb8.b8c8]  ['title' 0xd0.d0dd]
       ['surface' 0x1a.1e28]  ['on-surface' 0xb8.b8c8]
@@ -134,6 +164,7 @@
       ['link' 0x5a.8a9a]  ['side-link' 0xf0.8080]  ['tertiary' 0xcc.8020]
       ['pin' 0x14.140a]  ['note' 0x1a.1808]  ['on-note' 0xff.eeba]  ['wallet' 0x1a.2a3a]
       ['hd' 0x1a.0808]  ['hd-text' 0xcc.2020]  ['hd-nav' 0x8a.6a6a]
+      ['error' 0xcc.0000]  ['on-error' 0xff.ffff]
   ==
 ::
 ++  role
@@ -146,15 +177,17 @@
   ^-  scheme
   (turn s |=([k=@t v=@ux] ?:(=(k r) [k c] [k v])))
 ::
-::  +custom: a theme's whole scheme from its five colours, by talon's
-::  rules: the text on a colour is ink or paper by its luminance;
-::  containers blend toward the background (dark) or white; the rest
-::  of the surface ramp blends toward the text
+::  +custom: a theme's whole scheme from its colours, by talon's rules:
+::  the text on a colour is ink or paper by its luminance; containers
+::  blend toward the background (dark) or white; the rest of the
+::  surface ramp blends toward the text. A colour in +more that reads
+::  takes its roles, and what was derived from it follows it.
 ++  custom
   |=  t=theme
   ^-  scheme
   =/  base  (built-in dark.t)
   =/  pick  |=([h=@t r=@t] (fall (parse h) (role base r)))
+  =/  also  |=(h=(unit @t) (biff h parse))
   =/  p  (pick primary.t 'primary')
   =/  s  (pick secondary.t 'link')
   =/  e  (pick tertiary.t 'tertiary')
@@ -164,19 +197,30 @@
   =/  toward  ?:(dark.t white black)
   =/  box  |=(c=@ux ?:(dark.t (mix c b 600) (mix c white 800)))
   =/  on-box  |=(c=@ux ?:(dark.t (mix c white 750) (mix c black 650)))
-  =/  on-s  (on u)
-  =/  on-b  (on b)
+  =/  txt  (also text.more.t)
+  =/  on-s  (fall txt (on u))
+  =/  on-b  (fall txt (on b))
+  =/  mu  (also muted.more.t)
+  =/  up  (also raised.more.t)
+  =/  er  (fall (also error.more.t) (role base 'error'))
   =/  hd  ?:(dark.t u p)
   =/  hd-text  ?:(dark.t p (on p))
   :~  ['bg' b]  ['text' on-b]  ['title' on-b]
       ['surface' u]  ['on-surface' on-s]
-      ['muted' (mix on-s u 350)]  ['faint' (mix on-s u 550)]  ['visited' (mix on-s u 350)]
+      ::  faint sits as far past a set muted as the derived one sits past muted
+      ['muted' (fall mu (mix on-s u 350))]
+      ['faint' ?~(mu (mix on-s u 550) (mix u.mu u 310))]
+      ['visited' (fall mu (mix on-s u 350))]
       ['line' (mix u on-s 150)]  ['line-strong' (mix u on-s 400)]
-      ['input' ?:(dark.t (mix u black 300) white)]  ['tab' (mix u toward 60)]  ['tab-on' u]
+      ['input' (fall up ?:(dark.t (mix u black 300) white))]  ['tab' (fall up (mix u toward 60))]  ['tab-on' u]
       ['primary' p]  ['on-primary' (on p)]  ['primary-hover' (mix p toward 150)]
-      ['link' s]  ['side-link' p]  ['tertiary' e]
+      ['link' (fall (also link.more.t) link-blue)]  ['side-link' p]  ['tertiary' e]
       ['pin' (box p)]  ['note' (box e)]  ['on-note' (on-box e)]  ['wallet' (box s)]
       ['hd' hd]  ['hd-text' hd-text]  ['hd-nav' (mix hd-text hd 250)]
+      ['error' er]  ['on-error' (on er)]
+      ::  talon's: the primary colour at 40% over the ground, as Compose
+      ::  lays a selection
+      ['selection' (fall (also selection.more.t) (mix p b 600))]
   ==
 ::
 ::  +tint: an accent over a scheme, as talon lays one: the primary
@@ -218,7 +262,11 @@
     |=  [s=scheme dark=?]
     ^-  look
     =/  s  (paint s dark)
-    :-  (crip ":root\{color-scheme:{?:(dark "dark" "light")};{(vars s)}}")
+    ::  only a theme sets the selection: the built-in keeps the browser's
+    =/  sel=tape
+      ?.  (lien s |=([r=@t *] =(r 'selection')))  ""
+      "::selection\{background:var(--selection)}"
+    :-  (crip ":root\{color-scheme:{?:(dark "dark" "light")};{(vars s)}}{sel}")
     ~[['' (hexa (role s 'hd'))]]
   ?^  active  (one (custom u.active) dark.u.active)
   ?-  mode
@@ -263,7 +311,10 @@
     =/  got  (turn ~['id' 'name' 'primary' 'secondary' 'tertiary' 'background' 'surface'] f)
     ?.  (levy got |=(u=(unit @t) ?=(^ u)))  ~
     =/  v  (turn got |=(u=(unit @t) (need u)))
-    `[(snag 0 v) (snag 1 v) p.u.d (snag 2 v) (snag 3 v) (snag 4 v) (snag 5 v) (snag 6 v)]
+    ::  +more's: absent, or "" (talon's "work it out"), is ~
+    =/  opt  |=(k=@t (biff (f k) |=(h=@t ?:(=('' h) ~ `h))))
+    =/  mo=more  [(opt 'text') (opt 'muted') (opt 'raised') (opt 'error') (opt 'selection') (opt 'link')]
+    `[(snag 0 v) (snag 1 v) p.u.d (snag 2 v) (snag 3 v) (snag 4 v) (snag 5 v) (snag 6 v) mo]
   (str o 'activeId')
 ::
 ::  +talon-accent: the `accent` entry

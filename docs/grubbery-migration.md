@@ -324,6 +324,13 @@ do.
     draws with is derived by talon's rules (`CustomTheme.kt`): ink or
     paper text by luminance, containers blended toward the background or
     white. The one difference is that furum blends in sRGB, talon in Oklab.
+  - A theme from talon may also set six more (2026-09-29): `text`,
+    `muted`, `raised` (inputs, tabs), `error` (the delete buttons),
+    `selection` (a `::selection` rule, only under a theme) and `link`.
+    Each is optional, and "" means worked out. Links a theme leaves unset
+    are talon's link blue (`#2962FF`), not its secondary. Furum's own
+    editor still sets the five; prefs went to `%4` for the wider theme,
+    and a `%3` one reads with nothing more set.
   - An accent (off, the `%contacts` profile colour, or a hex) repaints the
     primary colour.
   - "Use talon's theme settings" is on by default. Talon keeps its saved

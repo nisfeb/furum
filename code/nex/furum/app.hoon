@@ -87,7 +87,7 @@
           [%fall %| /follows empty-dir:loader]
           [%fall %| /cache empty-dir:loader]
           [%fall %& [/ %feed] [[/ %noun] [%1 ~]]]
-          [%fall %& [/ %prefs] [[/ %noun] [%3 default-prefs]]]
+          [%fall %& [/ %prefs] [[/ %noun] [%4 default-prefs]]]
           [%fall %& [/ %notes] [[/ %noun] [%1 ~]]]
           [%fall %& [/ %registry] [[/ %noun] [%1 *registry-store]]]
           [%fall %& [/ %directory] [[/ %noun] [%1 *registry-store]]]
@@ -219,6 +219,12 @@
 ::  the theme: light, dark or the device's; whether talon's theme settings
 ::  rule (on unless turned off); furum's own saved themes and accent
 +$  looks  [mode=mode:th talon=? own=themes:th accent=accent:th]
+::  prefs as %3 kept them, before a theme could set more than five colours
++$  prefs-3
+  $:  looks=[mode=mode:th talon=? own=[list=(list theme-5:th) active=(unit @t)] accent=accent:th]
+      tags=(set term)
+      registry=@p
+  ==
 ++  default-looks  `looks`[%system & [~ ~] [~ %profile ~]]
 ++  default-prefs  `prefs`[default-looks (sy ~[%comments %new-posts %payments]) ~ricsul-bilwyt]
 +$  seen  [boards=(map [@p board-name] @da) posts=(map [@p board-name post-id] @da)]
@@ -473,7 +479,7 @@
   ^-  form:m
   ;<  pf=prefs  bind:m  (read-prefs 0)
   =.  mode.looks.pf  ?:(=(%dark mode.looks.pf) %light %dark)
-  (over:io (rf 0 / %prefs) [[/ %noun] [%3 pf]])
+  (over:io (rf 0 / %prefs) [[/ %noun] [%4 pf]])
 ::
 ++  set-prefs
   |=  [tags=(unit (set term)) registry=(unit @p)]
@@ -482,7 +488,7 @@
   ;<  pf=prefs  bind:m  (read-prefs 0)
   =?  tags.pf  ?=(^ tags)  u.tags
   =?  registry.pf  ?=(^ registry)  u.registry
-  (over:io (rf 0 / %prefs) [[/ %noun] [%3 pf]])
+  (over:io (rf 0 / %prefs) [[/ %noun] [%4 pf]])
 ::  +set-looks: the theme settings, when they are sane: at most fifty
 ::  themes, each with a name and five colours that read
 ::
@@ -500,7 +506,7 @@
   ?.  (levy list.own.l good)  (refuse 400 'a theme needs a name and five colours')
   ?:  &(?=(^ hex.accent.l) =(~ (parse:th u.hex.accent.l)))  (refuse 400 'that is not a colour')
   ;<  pf=prefs  bind:m  (read-prefs 0)
-  ;<  ~  bind:m  (over:io (rf 0 / %prefs) [[/ %noun] [%3 pf(looks l)]])
+  ;<  ~  bind:m  (over:io (rf 0 / %prefs) [[/ %noun] [%4 pf(looks l)]])
   (pure:m ~)
 ::
 ++  feed-put
@@ -1381,7 +1387,11 @@
   ^-  form:m
   ;<  n=(unit *)  bind:m  (read-noun (rf up / %prefs))
   ?~  n  (pure:m default-prefs)
-  ?^  p=(mole |.(+:;;([%3 prefs] u.n)))  (pure:m u.p)
+  ?^  p=(mole |.(+:;;([%4 prefs] u.n)))  (pure:m u.p)
+  ::  %3: furum's own themes had five colours and no +more
+  ?^  q=(mole |.(+:;;([%3 prefs-3] u.n)))
+    =*  o  looks.u.q
+    (pure:m [[mode.o talon.o [(turn list.own.o widen:th) active.own.o] accent.o] tags.u.q registry.u.q])
   =/  dp=prefs  default-prefs
   =/  was  |=(d=? dp(mode.looks ?:(d %dark %system)))
   ?^  o=(mole |.(+:;;([%2 dark=? tags=(set term) registry=@p] u.n)))
@@ -2048,7 +2058,7 @@
       =/  hit  (skim list.own.l |=(t=theme:th =(id.t u.e)))
       ?~(hit ~ `i.hit)
     ::  a new theme starts from the built-in one, light
-    `[(crip ((x-co:co 12) (end [3 6] eny))) '' | '#cc2020' '#8b1a1a' '#cc8020' '#f0eee8' '#f6f0e8']
+    `[(crip ((x-co:co 12) (end [3 6] eny))) '' | '#cc2020' '#8b1a1a' '#cc8020' '#f0eee8' '#f6f0e8' *more:th]
   %^  send-page  id.c  200
   %:  render-theme:fl  look.c  mode.l  talon.l  tal  own.l  accent.l  pro  edit
     (~(gut by args.c) 'msg' '')
@@ -2081,6 +2091,8 @@
       =/  t=theme:th
         :*  (f 'id')  (f 'name')  =('dark' (f 'dark'))
             (f 'primary')  (f 'secondary')  (f 'tertiary')  (f 'background')  (f 'surface')
+            ::  furum's own editor sets the five; +more is talon's to set
+            *more:th
         ==
       =/  rest  (skip list.own |=(o=theme:th =(id.o id.t)))
       `l(own [(snoc rest t) `id.t])

@@ -1088,13 +1088,26 @@
     (expect-eq !>(%.y) !>((has gone "@media (prefers-color-scheme: dark)")))
   ==
 ::
+::  prefs furum kept at %3, before a theme had +more, still read: an own
+::  theme of five colours draws, and the tags and registry stand
+::
+++  test-prefs-3
+  =/  dusk  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625']
+  =/  was  [%3 [[%light | [~[dusk] `'a1'] [~ %profile ~]] (sy ~[%comments]) ~zod]]
+  =/  t  (answer-peek:ft a-world:ft guide-run (file was))
+  =/  body  (trip body:(status:ft t))
+  ;:  weld
+    (expect-eq !>(%.y) !>(?=(^ (find "--primary:#fbbf24;" body))))
+    (expect-eq !>(%.y) !>(?=(^ (find "color-scheme:dark;" body))))
+  ==
+::
 ::  the writer keeps theme settings only when they are sane: every theme
 ::  named with five colours that read, at most fifty, an accent that is
 ::  a colour
 ::
 ++  test-set-looks
   =/  from  `from:fiber:nexus`[1 /requests %r1]
-  =/  dusk=theme:th  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625']
+  =/  dusk=theme:th  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625' *more:th]
   =/  set
     |=  l=*
     =/  t
@@ -1106,7 +1119,7 @@
   =/  good  [%dark & [~[dusk] `'a1'] [`& %custom `'#101541']]
   ;:  weld
     %+  expect-eq
-      !>([`(list *)`~[~] `(list *)`~[[%3 good (sy ~[%comments %new-posts %payments]) ~ricsul-bilwyt]]])
+      !>([`(list *)`~[~] `(list *)`~[[%4 good (sy ~[%comments %new-posts %payments]) ~ricsul-bilwyt]]])
       !>((set good))
     %+  expect-eq  !>(`(list *)`~[`[400 'a theme needs a name and five colours']])
       !>(-:(set [%dark & [~[dusk(primary 'red')] ~] [~ %profile ~]]))

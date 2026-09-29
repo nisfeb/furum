@@ -35,15 +35,18 @@
 ::  (light) or the surface (dark)
 ::
 ++  test-custom
-  =/  dusk=theme:th  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625']
-  =/  day=theme:th  ['d' 'Day' | '#4338CA' '#059669' '#DC2626' '#FAFAF9' '#FFFFFF']
+  =/  dusk=theme:th  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625' *more:th]
+  =/  day=theme:th  ['d' 'Day' | '#4338CA' '#059669' '#DC2626' '#FAFAF9' '#FFFFFF' *more:th]
   =/  d  (custom:th dusk)
   =/  l  (custom:th day)
   ;:  weld
     (expect-eq !>(0xfb.bf24) !>((role d 'primary')))
     (expect-eq !>(ink:th) !>((role d 'on-primary')))
     (expect-eq !>(paper:th) !>((role d 'text')))
-    (expect-eq !>(0xa5.b4fc) !>((role d 'link')))
+    ::  links a theme leaves unset are talon's link blue, not its secondary
+    (expect-eq !>(link-blue:th) !>((role d 'link')))
+    (expect-eq !>((mix:th 0xfb.bf24 0xf.0d1a 600)) !>((role d 'selection')))
+    (expect-eq !>(0xcc.0000) !>((role d 'error')))
     (expect-eq !>((mix:th 0xfb.bf24 0xf.0d1a 600)) !>((role d 'pin')))
     (expect-eq !>(0x1a.1625) !>((role d 'hd')))
     (expect-eq !>(0xfb.bf24) !>((role d 'hd-text')))
@@ -94,7 +97,7 @@
 ++  test-draw
   =/  sys  (draw:th %system ~ ~)
   =/  dk  (draw:th %dark ~ ~)
-  =/  dusk=theme:th  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625']
+  =/  dusk=theme:th  ['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625' *more:th]
   =/  own  (draw:th %light `dusk ~)
   =/  tinted  (draw:th %system ~ `0x10.1541)
   =/  has  |=([l=look:th t=tape] ?=(^ (find t (trip style.l))))
@@ -122,7 +125,7 @@
   =/  ts  (talon-themes:th talon-themes-json)
   ;:  weld
     %+  expect-eq
-      !>(`[~[['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625']] `'a1'])
+      !>(`[~[['a1' 'Dusk' & '#FBBF24' '#A5B4FC' '#34D399' '#0F0D1A' '#1A1625' *more:th]] `'a1'])
       !>(ts)
     (expect-eq !>(`[~ ~]) !>((talon-themes:th '{}')))
     (expect-eq !>(~) !>((talon-themes:th 'nope')))
@@ -150,5 +153,75 @@
       !>((profile-color:th (need (de:json:html '{"color":{"type":"tint","value":"0xff.5050"}}'))))
     (expect-eq !>(`0xff.5050) !>((profile-color:th (need (de:json:html '{"color":"#ff5050"}')))))
     (expect-eq !>(~) !>((profile-color:th (need (de:json:html '{"nickname":"x"}')))))
+  ==
+::
+::  a theme without +more draws as it always did, but for its links:
+::  the text, the quieter text, the inputs and tabs by the old rules
+::
+++  test-old-theme
+  =/  day=theme:th  ['d' 'Day' | '#4338CA' '#059669' '#DC2626' '#FAFAF9' '#FFFFFF' *more:th]
+  =/  l  (custom:th day)
+  =/  u  0xff.ffff
+  =/  on-s  ink:th
+  ;:  weld
+    (expect-eq !>(on-s) !>((role l 'on-surface')))
+    (expect-eq !>((mix:th on-s u 350)) !>((role l 'muted')))
+    (expect-eq !>((mix:th on-s u 550)) !>((role l 'faint')))
+    (expect-eq !>((mix:th on-s u 350)) !>((role l 'visited')))
+    (expect-eq !>((mix:th u on-s 150)) !>((role l 'line')))
+    (expect-eq !>(0xff.ffff) !>((role l 'input')))
+    (expect-eq !>((mix:th u 0x0 60)) !>((role l 'tab')))
+    (expect-eq !>((mix:th 0x4.3380 0xff.ffff 800)) !>((role (custom:th day(secondary '#043380')) 'wallet')))
+  ==
+::
+::  each colour in +more takes its roles, and what was derived from it
+::  follows: muted, faint and the lines from a set text; faint from a
+::  set muted
+::
+++  test-more
+  =/  base=theme:th  ['d' 'Day' | '#4338CA' '#059669' '#DC2626' '#FAFAF9' '#FFFFFF' *more:th]
+  =/  all  (custom:th base(more [`'#111111' `'#777777' `'#EEEEEE' `'#FF0000' `'#FFFF00' `'#00AA00']))
+  =/  txt  (custom:th base(text.more `'#223344'))
+  ;:  weld
+    (expect-eq !>(~[0x11.1111 0x11.1111 0x11.1111]) !>((turn ~['text' 'title' 'on-surface'] (cury role all))))
+    (expect-eq !>(0x77.7777) !>((role all 'muted')))
+    (expect-eq !>(0x77.7777) !>((role all 'visited')))
+    (expect-eq !>((mix:th 0x77.7777 0xff.ffff 310)) !>((role all 'faint')))
+    (expect-eq !>(~[0xee.eeee 0xee.eeee]) !>((turn ~['input' 'tab'] (cury role all))))
+    (expect-eq !>(0xff.0000) !>((role all 'error')))
+    (expect-eq !>(paper:th) !>((role all 'on-error')))
+    (expect-eq !>(0xff.ff00) !>((role all 'selection')))
+    (expect-eq !>(0xaa00) !>((role all 'link')))
+    ::  a set text: the quieter text and the lines blend from it
+    (expect-eq !>((mix:th 0x22.3344 0xff.ffff 350)) !>((role txt 'muted')))
+    (expect-eq !>((mix:th 0x22.3344 0xff.ffff 550)) !>((role txt 'faint')))
+    (expect-eq !>((mix:th 0xff.ffff 0x22.3344 150)) !>((role txt 'line')))
+    ::  and the picked five are as they were
+    (expect-eq !>((role (custom:th base) 'primary')) !>((role all 'primary')))
+  ==
+::
+::  "" is talon's "work it out": read as nothing set, and a colour that
+::  won't read is worked out too
+::
+++  test-more-unset
+  =/  base=theme:th  ['d' 'Day' | '#4338CA' '#059669' '#DC2626' '#FAFAF9' '#FFFFFF' *more:th]
+  =/  json
+    '{"themes":[{"id":"a","name":"A","dark":false,"primary":"#4338CA","secondary":"#059669","tertiary":"#DC2626","background":"#FAFAF9","surface":"#FFFFFF","text":"","muted":"#777777","link":"","error":"#FF0000"}],"activeId":"a"}'
+  =/  got  (need (talon-themes:th json))
+  ;:  weld
+    %+  expect-eq  !>(`more:th`[~ `'#777777' ~ `'#FF0000' ~ ~])
+      !>(more:(snag 0 list.got))
+    (expect-eq !>((custom:th base)) !>((custom:th base(more [`'' ~ `'nope' ~ `'' `'']))))
+  ==
+::
+::  only a theme sets the selection; the built-in keeps the browser's
+::
+++  test-selection-rule
+  =/  day=theme:th  ['d' 'Day' | '#4338CA' '#059669' '#DC2626' '#FAFAF9' '#FFFFFF' *more:th]
+  =/  has  |=([l=look:th t=tape] ?=(^ (find t (trip style.l))))
+  ;:  weld
+    (expect-eq !>(%.y) !>((has (draw:th %light `day ~) "::selection\{background:var(--selection)}")))
+    (expect-eq !>(%.n) !>((has (draw:th %system ~ ~) "::selection")))
+    (expect-eq !>(%.n) !>((has (draw:th %dark ~ ~) "--selection")))
   ==
 --
