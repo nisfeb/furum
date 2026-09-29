@@ -170,6 +170,38 @@
       !>((deny b l ~nec %edit-post %b 0 '' ~))
   ==
 ::
+::  who hears of what: the host of another's post; a post's author of a
+::  comment; a comment's author of a reply. Never the actor, and nobody
+::  twice when the parent's author wrote the post too
+::
+++  test-notes
+  =/  [b=(unit board) *]
+    %-  play
+    :~  [host %create-board %b 'B' '' %poster]
+        [host %set-role %b ~nec %mod]
+        [~nec %new-post %b 'nec post' ~ ~]
+        [~bus %new-comment %b 0 ~ 'bus comment']
+        [~nec %new-comment %b 0 ~ 'nec comment']
+    ==
+  =/  brd=board  (need b)
+  =/  url  `'/apps/furum/b/~zod/b/0'
+  =/  to  |=(n=(list note-out) (turn n |=(o=note-out to.o)))
+  ;:  weld
+    %+  expect-eq
+      !>(~[[host 'New post on your board' '~nec posted \'nec post\' to b' url (sy ~[%new-posts])]])
+      !>((notes-for:fb ~nec [%new-post %b 'nec post' ~ ~] brd))
+    (expect-eq !>(~) !>((notes-for:fb host [%new-post %b 'mine' ~ ~] brd)))
+    ::  a comment on ~nec's post, replying to ~bus: both hear
+    (expect-eq !>(~[~nec ~bus]) !>((to (notes-for:fb host [%new-comment %b 0 `0 'x'] brd))))
+    ::  ~nec replying to ~bus on its own post: only ~bus
+    (expect-eq !>(~[~bus]) !>((to (notes-for:fb ~nec [%new-comment %b 0 `0 'x'] brd))))
+    ::  ~bus answering itself on ~nec's post: only ~nec
+    (expect-eq !>(~[~nec]) !>((to (notes-for:fb ~bus [%new-comment %b 0 `0 'x'] brd))))
+    ::  the host answering ~nec's own comment on ~nec's post: ~nec once
+    (expect-eq !>(~[~nec]) !>((to (notes-for:fb host [%new-comment %b 0 `1 'x'] brd))))
+    (expect-eq !>(~) !>((to (notes-for:fb host [%upvote %b [%post 0]] brd))))
+  ==
+::
 ::  a vote replaces the voter's last one on that target; remove clears it
 ::
 ++  test-votes

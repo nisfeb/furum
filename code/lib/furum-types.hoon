@@ -244,4 +244,26 @@
 +$  tally  [up=(set @p) down=(set @p)]
 +$  board-conf  [next-post=post-id prune=(unit prune-config)]
 +$  limits  (map [@p board-name] [last=@da cooldown=@dr])
+::
+::  why an action is refused, as a page or a note will say it
+::
++$  deny  [code=@ud why=@t]
+::
+::  what ships send each other, under [/furum %msg], to a nexus's
+::  inbox: an action on a board it hosts, a registry action (with the
+::  sender's install path), or a notification for its owner
+::
++$  msg
+  $%  [%act =action]
+      [%reg here=path =registry-action]
+      [%note title=@t body=@t url=(unit @t) tags=(set term)]
+  ==
+::  a notification to send: to whom, and what
+::
++$  note-out  [to=@p title=@t body=@t url=(unit @t) tags=(set term)]
+::
+::  the registry, on the ship that keeps it: the directory, where each
+::  host's furum is installed, and the ships that may curate
+::
++$  registry-store  [dir=(map board-name directory-entry) hosts=(map @p path) admins=(set @p)]
 --

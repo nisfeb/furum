@@ -212,6 +212,8 @@
 ::
 ++  push-js
   ^-  @t
+  ::  the browser's subscription goes to grubbery's push service, which
+  ::  answers a sub_id that unsubscribing needs; the page keeps it
   '''
   (function(){
     var btn=document.getElementById("push-toggle");
@@ -219,6 +221,7 @@
     btn.style.display="inline";
     var sub=null;
     var swReady=navigator.serviceWorker.ready;
+    var post=function(u,b){return fetch(u,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})};
     function updateBtn(on){
       btn.textContent=on?"notifications: on":"notifications: off";
       btn.title=on?"Click to disable notifications":"Click to enable notifications";
@@ -234,18 +237,16 @@
     btn.onclick=function(){
       btn.disabled=true;
       if(sub){
-        var id=sub.endpoint.split("/").pop();
-        fetch("/apps/furum/~web-pusher/unsubscribe",{
-          method:"POST",credentials:"include",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({id:"b-"+id})
-        }).then(function(){return sub.unsubscribe()}).then(function(){
+        var id=null;try{id=localStorage.getItem("furum-push-sub")}catch(e){}
+        (id?post("/grubbery/push/unsubscribe",{sub_id:id}):Promise.resolve())
+        .then(function(){return sub.unsubscribe()}).then(function(){
+          try{localStorage.removeItem("furum-push-sub")}catch(e){}
           sub=null;updateBtn(false);btn.disabled=false;
         }).catch(function(){btn.disabled=false;});
       } else {
         swReady.then(function(reg){
-          return fetch("/apps/furum/~web-pusher/vapid-key",{credentials:"include"})
-          .then(function(r){return r.text()})
+          return fetch("/grubbery/push/vapid-key",{credentials:"include"})
+          .then(function(r){if(!r.ok)throw new Error("push is not set up on this ship");return r.text()})
           .then(function(key){
             var raw=atob(key.replace(/-/g,"+").replace(/_/g,"/"));
             var arr=new Uint8Array(raw.length);
@@ -255,13 +256,9 @@
         }).then(function(s){
           sub=s;
           var k=sub.toJSON();
-          var id="b-"+k.endpoint.split("/").pop();
-          return fetch("/apps/furum/~web-pusher/subscribe",{
-            method:"POST",credentials:"include",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({id:id,endpoint:k.endpoint,p256dh:k.keys.p256dh,auth:k.keys.auth})
-          });
-        }).then(function(){
+          return post("/grubbery/push/subscribe",{endpoint:k.endpoint,p256dh:k.keys.p256dh,auth:k.keys.auth});
+        }).then(function(r){return r.json()}).then(function(d){
+          try{if(d.sub_id)localStorage.setItem("furum-push-sub",d.sub_id)}catch(e){}
           updateBtn(true);btn.disabled=false;
         }).catch(function(e){
           btn.disabled=false;
@@ -2341,6 +2338,7 @@
           subs-list=(list [@p board-name])
           cache-list=(list [@p board-name cached-board])
           msg=@t
+          registry=@p
       ==
   ^-  manx
   =/  status-banner=manx
@@ -2515,7 +2513,7 @@
     (function(){
       var boxes=document.querySelectorAll(".notif-pref");
       if(!boxes.length)return;
-      fetch("/apps/furum/~web-pusher/prefs",{credentials:"include"})
+      fetch("/apps/furum/push-prefs",{credentials:"include"})
       .then(function(r){return r.json()})
       .then(function(tags){
         boxes.forEach(function(cb){
@@ -2525,7 +2523,7 @@
       document.getElementById("notif-save").addEventListener("click",function(){
         var tags=[];
         boxes.forEach(function(cb){if(cb.checked)tags.push(cb.value)});
-        fetch("/apps/furum/~web-pusher/prefs",{
+        fetch("/apps/furum/push-prefs",{
           method:"POST",credentials:"include",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({tags:tags})
@@ -2572,6 +2570,16 @@
       ;span(id "notif-status", style "margin-left: 12px; color: #5a7a8a");
       notif-script
     ==
+  ::  -- the directory this ship reads --
+  =/  directory-section=marl
+    :~  ;hr;
+        ;h3: Board directory
+        ;p.me: The home page lists the boards registered with {(scow %p registry)}.
+        ;form(method "post", action "/apps/furum/admin/registry-ship")
+          ;input(type "text", name "who", value "{(scow %p registry)}", required "");
+          ;input.btn(type "submit", value "read the directory from this ship");
+        ==
+    ==
   ::  -- assemble page --
   =/  admin-content=marl
     ;:  welp
@@ -2579,6 +2587,7 @@
           ;p.me: Computer-level administration for your furum instance.
           status-banner
       ==
+      directory-section
       boards-section
       notif-section
       subs-section

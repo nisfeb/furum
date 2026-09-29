@@ -11,9 +11,6 @@
 ::  the noun it holds
 ::
 +$  grub  [pax=path val=*]
-::  why an action is refused, as the page will answer it
-::
-+$  deny  [code=@ud why=@t]
 ::
 ++  bucket
   |=  id=post-id
@@ -283,6 +280,44 @@
       %upvote       ?.(paid |+[402 'this board needs a paid membership'] (done (vote brd target.action who %up)))
       %downvote     ?.(paid |+[402 'this board needs a paid membership'] (done (vote brd target.action who %down)))
       %remove-vote  ?.(paid |+[402 'this board needs a paid membership'] (done (vote brd target.action who %remove)))
+  ==
+::
+::  +notes-for: who hears of an action, applied: the host, of a new
+::  post by someone else; the post's author, of a comment on it; the
+::  author of a comment, of a reply to it. Never the actor, and nobody
+::  twice. `brd` is the board after the action.
+::
+++  notes-for
+  |=  [who=@p =action brd=board]
+  ^-  (list note-out)
+  =/  host=@p  host.info.brd
+  =/  at  |=(t=tape `(crip "/apps/furum/b/{(scow %p host)}/{(trip name.info.brd)}{t}"))
+  ?+    -.action  ~
+      %new-post
+    ?:  =(who host)  ~
+    ?:  =(0 next-post-id.brd)  ~
+    :~  :*  host  'New post on your board'
+            (crip "{(scow %p who)} posted '{(trip title.action)}' to {(trip name.action)}")
+            (at "/{(a-co:co (dec next-post-id.brd))}")  (sy ~[%new-posts])
+    ==  ==
+  ::
+      %new-comment
+    ?~  p=(~(get by posts.brd) post.action)  ~
+    =/  url  (at "/{(a-co:co post.action)}")
+    =/  to-author=(list note-out)
+      ?:  =(who author.u.p)  ~
+      :~  :*  author.u.p  'New comment on your post'
+              (crip "{(scow %p who)} commented on '{(trip title.u.p)}'")
+              url  (sy ~[%comments])
+      ==  ==
+    ?~  parent.action  to-author
+    ?~  c=(~(get by (~(gut by comments.brd) post.action ~)) u.parent.action)  to-author
+    ?:  |(=(who author.u.c) =(author.u.c author.u.p))  to-author
+    %+  snoc  to-author
+    :*  author.u.c  'Reply to your comment'
+        (crip "{(scow %p who)} replied to your comment on '{(trip title.u.p)}'")
+        url  (sy ~[%comments])
+    ==
   ==
 ::
 ::  +drop-posts: posts gone, with their threads

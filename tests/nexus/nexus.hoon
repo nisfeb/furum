@@ -46,7 +46,7 @@
     %+  expect-eq
       !>  ^-  (list *)
       :~  [%register [~ %'main.sig'] ~]
-          [%how /public [~ (sy ~[(rf 0 / %'inbox.sig')]) ~]]
+          [%how /public [~ (sy ~[(rf 0 / %'inbox.sig')]) (sy ~[(rv 0 /boards) (rf 0 / %registry)])]]
       ==
       !>((turn (pokes:ft t [/usergroups %registry-action]) |=([* n=*] n)))
   ==
@@ -98,7 +98,7 @@
     %:  run-behind:ft  a-world:ft
       ((on-file:app [~ %'main.sig'] *blot:tarball) ~)
       !>(~)
-      (poke *from:fiber:nexus (op [%inbox ~nec [/foo %bar]]))
+      (poke *from:fiber:nexus (op [%from ~nec [/foo %bar] ~]))
     ==
   =/  t  (answer-peek:ft a-world:ft t [%none ~])
   ;:  weld
@@ -112,16 +112,119 @@
 ::
 ++  test-writer-refuses
   =/  t0  (start a-world:ft [~ %'main.sig'] ~)
-  =/  t1  (feed:ft a-world:ft t0 (poke (from-ship ~nec) (op [%inbox ~bus [/ %x]])))
+  =/  t1  (feed:ft a-world:ft t0 (poke (from-ship ~nec) (op [%from ~bus [/ %x] ~])))
   =/  t2  (feed:ft a-world:ft t1 (poke *from:fiber:nexus (op 'garbage')))
   =/  t3  (feed:ft a-world:ft t2 (poke *from:fiber:nexus [[/ %json] !>(~)]))
-  =/  t4  (feed:ft a-world:ft t3 (poke *from:fiber:nexus (op [%inbox ~nec [/foo %bar]])))
+  =/  t4  (feed:ft a-world:ft t3 (poke *from:fiber:nexus (op [%from ~nec [/foo %bar] ~])))
   =/  t4  (answer-peek:ft a-world:ft t4 [%none ~])
   ;:  weld
     (expect-eq !>(%wait) !>(end.t4))
     %+  expect-eq
       !>(~[(rf 0 /tr %last) (rf 0 /tr %last) (rf 0 /tr %last) (rf 0 /tr %inbox)])
       !>((made t4))
+  ==
+::
+::  a change another ship asks for and our writer refuses is told back
+::  to it, through the outbox, never from the writer itself
+::
+++  test-refusal-told-back
+  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =.  w
+    %^  feed:ft  a-world:ft  w
+    %+  poke  *from:fiber:nexus
+    [[/furum %op] !>([%from ~nec [/furum %msg] [%act %create-board %b 'B' '' %poster]])]
+  ::  the inbox ring, the board, the rate limits
+  =.  w  (answer-peek:ft a-world:ft w [%none ~])
+  =.  w  (answer-peek:ft a-world:ft w [%none ~])
+  =.  w  (answer-peek:ft a-world:ft w [%none ~])
+  =/  out
+    %+  skim  (made-files w)
+    |=([r=road:tarball *] ?=([%| @ %& [%outbox ~] @] r))
+  %+  expect-eq
+    !>(`(list *)`~[[~nec %note '~zod refused your change' 'only the host may create a board' `'/apps/furum/b/~zod/b' ~]])
+  !>((turn out tail))
+::
+::  a note is kept only from a ship whose boards we read; a link no page
+::  may follow is dropped from it; it pushes only when its kind is one
+::  the owner picked
+::
+++  test-notes-from-followed
+  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =/  note
+    |=  [src=@p url=(unit @t) tags=(set term)]
+    %+  feed:ft  a-world:ft
+    :-  w
+    %+  poke  *from:fiber:nexus
+    [[/furum %op] !>([%from src [/furum %msg] [%note 'hi' 'there' url tags]])]
+  =/  none  |=(t=trail:ft (answer-peek:ft a-world:ft t [%none ~]))
+  =/  following  [%ball *wave:nexus (as-ball (my ~[[/b ~]]))]
+  ::  the inbox ring, then whether we follow the sender
+  =/  stranger  (none (none (note ~nec ~ ~)))
+  ::  the ring, the follows, the notes so far, the prefs
+  =/  known
+    (none (none (answer-peek:ft a-world:ft (none (note ~bus `'javascript:alert(1)' ~)) following)))
+  =/  wanted
+    (none (none (answer-peek:ft a-world:ft (none (note ~bus ~ (sy ~[%comments]))) following)))
+  =/  notes
+    |=  t=trail:ft
+    %+  murn  (made-files t)
+    |=  [r=road:tarball n=*]
+    ?.  =(r (rf 0 / %notes))  ~
+    `(turn ;;((list notification) +.n) |=(x=notification url.x))
+  ;:  weld
+    (expect-eq !>(~) !>((notes stranger)))
+    (expect-eq !>(`(list (list (unit @t)))`~[~[~]]) !>((notes known)))
+    (expect-eq !>(~) !>((pokes:ft known [/ %push-action])))
+    (expect-eq !>(1) !>((lent (pokes:ft wanted [/ %push-action]))))
+  ==
+::
+::  following another ship's board puts it in the feed and starts its
+::  mirror; following our own only the feed; unfollowing only the feed
+::
+++  test-follow
+  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =/  act
+    |=  a=action
+    %^  feed:ft  a-world:ft  w
+    (poke *from:fiber:nexus [[/furum %op] !>([%act ~zod a])])
+  =/  none  |=(t=trail:ft (answer-peek:ft a-world:ft t [%none ~]))
+  ::  the feed, then whether we mirror it already
+  =/  theirs  (none (none (act [%follow-board ~nec %b])))
+  =/  ours  (none (act [%follow-board ~zod %b]))
+  =/  gone  (none (act [%unfollow-board ~nec %b]))
+  ;:  weld
+    %+  expect-eq
+      !>  ^-  (list [road:tarball *])
+      :~  [(rf 0 / %feed) [%1 (sy ~[[~nec %b]])]]
+          [(rf 0 /follows/~nec %b) [%1 ~]]
+      ==
+    !>((made-files theirs))
+    (expect-eq !>(~[[(rf 0 / %feed) [%1 (sy ~[[~zod %b]])]]]) !>((made-files ours)))
+    ::  unfollowing what isn't followed changes nothing
+    (expect-eq !>(~) !>((made-files gone)))
+  ==
+::
+::  a ship that doesn't keep the registry refuses registry actions; one
+::  that does keeps the entry
+::
+++  test-registry-writer
+  =/  w  (start a-world:ft [~ %'main.sig'] ~)
+  =/  reg
+    %^  feed:ft  a-world:ft  w
+    (poke *from:fiber:nexus [[/furum %ask] !>([%reg ~nec /apps/furum [%register %b 'B' '']])])
+  =/  prefs
+    |=  who=@p
+    [%file *cass:clay [[/ %noun] %& !>([%2 | ~ who])]]
+  ::  the prefs: the registry is elsewhere, or here
+  =/  elsewhere  (answer-peek:ft a-world:ft reg (prefs ~nec))
+  =/  here  (answer-peek:ft a-world:ft (answer-peek:ft a-world:ft reg (prefs ~zod)) [%none ~])
+  ;:  weld
+    %+  expect-eq  !>(`(list *)`~[`[404 'this ship keeps no directory']])
+      !>((turn (pokes:ft elsewhere [/furum %done]) tail))
+    %+  expect-eq
+      !>  ^-  (list [road:tarball *])
+      ~[[(rf 0 / %registry) [%1 (my ~[[%b [%b 'B' '' ~nec ~ |]]]) (my ~[[~nec /apps/furum]]) ~]]]
+    !>((made-files here))
   ==
 ::
 ::  the inbox forwards another ship's poke with the sender the transport
@@ -133,7 +236,7 @@
   =/  t2  (feed:ft a-world:ft t1 (poke *from:fiber:nexus [[/foo %bar] !>(43)]))
   ;:  weld
     (expect-eq !>(%wait) !>(end.t2))
-    %+  expect-eq  !>(`(list [road:tarball *])`~[[(rf 0 / %'main.sig') [%inbox ~nec [/foo %bar]]]])
+    %+  expect-eq  !>(`(list [road:tarball *])`~[[(rf 0 / %'main.sig') [%from ~nec [/foo %bar] 42]]])
       !>((pokes:ft t2 [/furum %op]))
   ==
 ::

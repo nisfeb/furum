@@ -164,15 +164,16 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/` holds five suites, 46 tests:
+`tests/nexus/` holds six suites, 53 tests:
 
 | suite | tests | what it owns |
 |---|---|---|
 | `furum-rules` | 8 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check |
 | `furum` | 12 | the Gall suite, unchanged: links, forms, vote targets, paging, threads, orderings |
 | `cashu` | 9 | the Gall suite, unchanged |
-| `furum-board` | 7 | a board in the ball (below) |
-| `nexus` | 10 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+| `furum-board` | 8 | a board in the ball, and who hears of an action (below) |
+| `furum-registry` | 2 | the directory's rules: first registrant, curation, admins |
+| `nexus` | 14 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
 
 The Gall desk's libs were copied to `code/lib` with grubbery imports
 (`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
@@ -190,6 +191,7 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-who-may` | the host alone makes and deletes boards; mods pin and set roles; a reader can't post; only an author edits |
 | `test-limits-and-targets` | the post cooldown binds everyone but mods; a comment needs its post, and a reply its parent |
 | `test-host-settings` | only the host edits or opens a board, a board keeps a title, a paid board stays closed, the sidebar's 10,000-byte cap, unpinning |
+| `test-notes` | the host hears of another's post; a post's author of a comment; a comment's author of a reply; never the actor, nobody twice |
 | `test-votes` | a vote replaces the voter's last one on a target, and remove clears it |
 
 `nexus`:
@@ -203,14 +205,27 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-writer-refuses` | a ship's poke, a malformed op and a wrong mark go to `/tr/last`, never a crash; a good op lands on `/tr/inbox` |
 | `test-ask-answered` | an ask is answered to the fiber that asked, refused or applied; a new board is made whole |
 | `test-prune` | the tick pokes the writer at its slot, and the writer deletes only the posts past age and under score, rewriting only their bucket |
+| `test-refusal-told-back` | a change another ship asks for and our writer refuses is told back to it, through the outbox |
+| `test-notes-from-followed` | a note is kept only from a ship whose boards we read; a link no page may follow is dropped; it pushes only when its kind is one the owner picked |
+| `test-follow` | following another ship's board puts it in the feed and starts its mirror; our own board only the feed; unfollowing only the feed |
+| `test-registry-writer` | a ship that doesn't keep the registry refuses registry actions; one that does keeps the entry and the host's install path |
 | `test-inbox-forwards` | the inbox forwards another ship's poke with the sender the transport names, and ignores a local one |
 | `test-owner-gate` | owner pages are the owner's; the about page is anyone's; a board a guest can't see answers like a missing one; a cross-site form and a wrong method are refused |
 | `test-rise-plan` | the backoff: 1, 2, 4 minutes to an hour, reset after two quiet hours |
 
-The request routes are checked live, not by unit tests:
+`furum-registry` holds `test-register` (a name is its first registrant's;
+retitling keeps tags and curation; only the host unregisters; install
+paths are kept and capped) and `test-curation` (the registry and its
+admins curate; only the registry names admins).
+
+The request routes and the network are checked live, not by unit tests:
 `scripts/api-matrix.py <url> <jar> <~ship>` works a fresh board through
 every host action and page, as owner and guest, with each refusal the
 routes promise (86 checks), and deletes it again.
+`scripts/xship.py <url-a> <jar-a> <~a> <url-b> <jar-b> <~b>` runs two
+ships at each other, both ways (58 checks): the directory, following,
+posts, comments, replies, votes, moderation, notes, and a refusal told
+back.
 
 ### Mutation run, phase 1 (2026-09-28, all ops)
 
@@ -262,6 +277,24 @@ What survives:
 The request routes (`+handle-request`, `+serve-*`) are not
 mutation-tested: `api-matrix.py` checks them live, at about a minute a
 mutant through `hoon-mutate.py --live`.
+
+### Mutation run, phase 3 (2026-09-28, all ops)
+
+On `+notes-for`, `lib/furum-registry`, and the writer's inbox arms
+(`+from-ship`, `+take-note`, `+keep-note`, `+note-to`, `+watch`,
+`+feed-put`, `+do-reg`).
+
+The first pass left 19 survivors. The real gaps:
+- nobody hearing twice, when a reply answers the post author's own
+  comment;
+- a note's link being sanitized, and push following the owner's picks;
+- the feed writes of following and unfollowing;
+- the writer refusing registry actions when it keeps no registry;
+- the install-path cap at exactly 16 segments.
+
+Each now has a test, and `+take-note` lost a clause no path reaches
+(our own notes never come through the inbox). The second pass killed all
+45 mutants that build; 4 don't build.
 
 ## Not covered
 

@@ -86,8 +86,9 @@ tests/nexus/…   hoon-test-nexus.conf (DIALECT=grubbery)   scripts/{code-closur
 <instance>/                  /apps/shell.shell/desks/furum.desk/desk/data/furum.furum_app
   weir.json link.json tile.json manifest.json     %over, from arms (weir.json is the consent ask)
   main.sig                   THE WRITER: every mutation, in order
-  inbox.sig                  public poke road: remote posts, comments, votes, mod actions, joins
-  notify.sig                 public poke road: notifications from hosts about our posts
+  inbox.sig                  the one public poke road: actions on our boards, registry actions, notes for us
+  dir.sig                    keeps our copy of the registry's directory
+  outbox/<id>                one message to another ship, and the fiber that sends it
   web.sig  requests/<eyre-id>                     bind /apps/furum, one fiber per request
   prune.sig                  pokes the writer at each 6-hour slot (auto-prune)
   boards/<name>/
@@ -179,9 +180,11 @@ do.
     other fiber silently (spike B), and it strips the grants when the
     registrant dies.
   - The set is:
-  - **poke** on `inbox.sig` and `notify.sig`;
-  - **peek** on each board's `card` and `roles`;
+  - **poke** on `inbox.sig`;
+  - **peek** on each board's `card` and `roles`, and on `registry`;
   - **peek** on `content/` for free boards only.
+  - Phase 3 grants peek on all of `boards/`, since no board is paid yet.
+    Phase 4 narrows it to this set before phase 5 makes paid boards.
 - **Paid boards** get a group per board, `furum/<name>.grp`.
   - Its `who.ships` is the board's moderators plus its paid members, and its
     `how.weir` grants peek on that board's `content/`, with absolute roads
@@ -218,15 +221,16 @@ do.
     from its own `grant.json` `here` (spike D).
   - For a direct link, try the standard desk path, then ask the registry.
   - Auspex's hardcoded `+remote-install` is the known wrong answer.
-- **Remote pokes don't report their ack to a nexus fiber.** A timeout means
-  "unknown", never failure. The optimistic post and comment already in furum
-  fit this. Confirm them when the wave brings them back, which is what
-  `merge-comment` already does.
+- **Remote pokes report their consumption, not their outcome.** A form on
+  another ship's board waits for the host to take the poke (15 s at most),
+  then for the mirror to change (5 s at most), then redirects. There is no
+  optimistic copy to reconcile, and a refusal comes back as a note.
 
 ### Notifications
 
-- The host's writer pokes the author's `notify.sig` about comments and
-  replies, as the Gall host does today.
+- The host's writer tells the author's inbox about comments and replies, as
+  the Gall host does today, through the outbox (one fiber per message), so
+  the writer never waits on another ship.
 - The author's ship stores the note and calls `send-push:io` for its own
   browsers. The kernel's push ignores `tags`, so furum filters by its own
   preferences before sending.
@@ -256,13 +260,13 @@ do.
 
 ### The registry
 
-- A `registry/` subtree, laid only when `our` is `~ricsul-bilwyt` (the
-  constant changes from the Gall agent's `~ricsul-bilwyt-dozzod-nisfeb`).
-  - `directory`: public peek, or a farm spur since it is public.
-  - `admins`
-  - `registry/inbox.sig`: public poke, holding the first-registrant rule and
-    `valid-board-name` from last round.
-- Readers keep the directory as they keep a board.
+- A `registry` grub holds the directory, the admins, and where each host
+  keeps furum. Only the registry ship writes it; every ship may peek it.
+- Registry actions arrive at the ordinary inbox. The first-registrant rule
+  and `valid-board-name` are in `lib/furum-registry`.
+- The registry ship is a pref, `~ricsul-bilwyt` by default, so two fake
+  ships can test it. The Gall agent hardcoded `~ricsul-bilwyt-dozzod-nisfeb`.
+- Readers keep the registry grub as they keep a board (`dir.sig`).
 
 ### Web UI
 
@@ -352,7 +356,7 @@ spikes can move them.
 | 0 | **spikes** (below) | S each | **done 2026-09-28**: see Phase 0 results |
 | 1 | skeleton: desk layout, on-load rows, `weir.json`, writer, inbox, request dispatch, crash handling, kit with `DIALECT=grubbery`, closure and weir checks | M | **done 2026-09-28**: see Phase 1 results |
 | 2 | host: boards, posts, comments, votes, roles, pins, sidebar, prune, caps, rate limits, the Sail pages, CSRF, public view | L | **done 2026-09-28**: see Phase 2 results |
-| 3 | network: follow by keep, remote writes by inbox, notifications, the registry | L | an xship script (two ships) follows, posts, comments, votes and gets notified, both ways |
+| 3 | network: follow by keep, remote writes by inbox, notifications, the registry | L | **done 2026-09-28**: see Phase 3 results |
 | 4 | access: public grants, member groups, moderator groups, revocation | M | a non-member is refused content by the weir; a lapsed member loses it within the sweep interval |
 | 5 | payments: payment grubs, wallet, Lightning and ecash, NUT-07/09 recovery, membership sweeper | L | pay, lapse and renew end to end against a test mint (nutshell `FakeWallet`), surviving a reload at every step |
 | 6 | migration: the 0.6 Gall release (export, payment freeze, banner, redirects), import by scry and by file, re-hosting, verification | M | a copy of the moon's export imports on a fake `~ricsul-bilwyt` stand-in, re-hosted, with every count and every sat matching |
@@ -448,6 +452,83 @@ rules.**
     1024 sats up, which would lose those proofs.
 - All fixed with `dum:ag` behind a tested `parse-id`. See
   `docs/hoon-testing.md`.
+
+### Phase 3 results (2026-09-28)
+
+Two fake ships run furum at each other, both ways:
+`scripts/xship.py` passes all 58 of its checks, covering following,
+posts, comments, replies, votes, moderation, notes, a refusal told back,
+and both boards in both directories. `api-matrix.py` still passes on one
+ship, and the unit tests are now 53.
+
+**How it works.**
+- **One public road.** Other ships poke `inbox.sig` with `[/furum %msg]`:
+  an action on a board we host, a registry action, or a note for our
+  owner.
+  - The inbox forwards the sender the transport names; the writer applies
+    the action as that ship's.
+  - A refusal (a cooldown, a role) is sent back as a note, so the reader
+    learns why.
+  - A note is kept only from a ship whose boards we read.
+  - The planned second road, `notify.sig`, went: one grant is less to ask.
+- **The outbox.** The writer never pokes another ship. It makes
+  `outbox/<id>`, whose fiber sends the message, waits at most 30 s for the
+  host to take it, and asks the writer to cull it. Ames keeps trying after
+  that.
+- **Followers.** Opening another ship's board makes `follows/<host>/<name>`
+  (a loading page shows meanwhile). Its fiber keeps the host's board
+  directory and mirrors it into `cache/<host>/<name>`, the same grubs in
+  the same places, so pages load a mirror with the loader a hosted board
+  uses.
+  - It copies the whole board first, then on each wave reads only the
+    grubs whose version moved, writing posts, threads and votes before the
+    card and conf.
+  - Every ten minutes it copies the whole board again: a host never says
+    it dropped a follower, and missed news would stay missed.
+  - A failed keep is retried after 1, 2, 4 and up to 60 minutes.
+- **Writing to another ship's board.** A form on a mirrored board starts a
+  local keep on the mirror, pokes the host's inbox, and redirects once the
+  mirror changes, or after 5 s. The page then shows the write.
+- **Notes.** The host's writer runs `+notes-for` after each action it
+  applies: the host of another's post, a post's author of a comment, a
+  comment's author of a reply, never the actor. They go to local notes or
+  the outbox.
+  - Notes push to the owner's browsers through `/sys/push` when their kind
+    is one the owner picked; the push button talks to
+    `/grubbery/push/{vapid-key,subscribe,unsubscribe}`.
+- **The directory.** The registry ship's `registry` grub is peekable by
+  every ship.
+  - A new board registers itself, carrying its host's install path from
+    `grant.json`. Deleting it unregisters it.
+  - Readers find a host's furum through those paths (the standard desk path
+    when there is none).
+  - `dir.sig` keeps the registry grub and copies it to `/directory`.
+  - The admin page sets which ship's directory to read.
+
+**Measured on ~bus and ~wes** (two fake ships on one busy machine):
+- opening another ship's board: a loading page, then the board about 6 s
+  later;
+- a post to another ship's board, redirected once the mirror has it: about
+  2 s;
+- a vote: 1.7 s. A comment the host refuses waits the full 5 s, then the
+  note arrives.
+
+**Found on the way:**
+- **`grant.json` was being deleted.** The shell writes it into the app root
+  on approval, and the loader's `spin` drops every grub no on-load row
+  covers. A `%stay` row keeps it.
+- **A new post changes two grubs** (the post's bucket and `conf`). A
+  redirect that waited for the first change sometimes read the mirror
+  before the post. The follower now writes content first.
+- **`weir-check.py` can't see roads built by `+remote`**
+  (`/sys/ames/ships/<ship>/root/<path>`). It lists `/sys/ames/ships/` as
+  declared but unreached, a false positive: `xship.py` is what shows those
+  roads are used.
+- **Hoon traps:**
+  - A sample named `in` shadows the `in` door, so `~(put in s)` fails with
+    `-find.put`.
+  - `|=  =deny` makes a face that shadows the type `deny`.
+  - `default-prefs(dark x)` modifies an arm. Bind it first.
 
 ### Phase 2 results (2026-09-28)
 
