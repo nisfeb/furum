@@ -5,7 +5,7 @@
 /<  th  /lib/furum-theme.hoon
 |%
 ::  the release, as in code/version.json; the page footer shows it
-++  version  '3'
+++  version  '4'
 ::
 ::  the app icon (nex/furum/icon.svg) as a 512 px PNG, base64
 ::
