@@ -164,17 +164,17 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/` holds seven suites, 105 tests:
+`tests/nexus/` holds seven suites, 111 tests:
 
 | suite | tests | what it owns |
 |---|---|---|
-| `furum-rules` | 10 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check; and who reads a paid board |
+| `furum-rules` | 12 | the Gall suite, ported: who may do what, paid access, rate limits, the prune slot, auto-prune, post caps, the cross-site check; who reads a paid board; and when a fault is said (`docs/logging.md`) |
 | `furum` | 13 | the Gall suite: links, forms, vote targets, paging, threads, orderings; and the loading page in the reader's theme |
 | `cashu` | 17 | the Gall suite, and the wallet and recovery arms payments use (below) |
 | `furum-board` | 9 | a board in the ball, and who hears of an action (below) |
 | `furum-registry` | 2 | the directory's rules: first registrant, curation, admins |
 | `furum-theme` | 10 | the theme: colours derived as talon derives them, an accent, what a page draws with, talon's settings read as talon writes them |
-| `nexus` | 44 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+| `nexus` | 48 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
 
 The Gall desk's libs were copied to `code/lib` with grubbery imports
 (`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
@@ -197,6 +197,10 @@ the pure `+prune-at`, and `+merge-comment` (the Gall client cache) went.
 | `test-votes` | a vote replaces the voter's last one on a target, and remove clears it |
 
 `nexus`:
+
+Tests that drive a fault (a crash, a missing road) print its line, so
+the test ship's console shows them during a run: test output, not the
+app. Clear it, screen and all, before a quiet gate.
 
 A road the kit's world refuses answers with a `%veto` intake, which is
 how grubbery answers a road outside *our* weir: `peek-soft` gives `~`.
@@ -231,6 +235,10 @@ fiber sends next is answered as if nothing were refused.
 | `test-inbox-forwards` | the inbox forwards another ship's poke with the sender the transport names, and ignores a local one |
 | `test-owner-gate` | owner pages are the owner's; the about page is anyone's; a board a guest can't see answers like a missing one; a cross-site form and a wrong method are refused |
 | `test-rise-plan` | the backoff: 1, 2, 4 minutes to an hour, reset after two quiet hours |
+| `test-check-grant` | the writer's start reads the shell's grant: a road furum needs that isn't granted is kept at `/tr/fault`; one only needed in use isn't; a full grant clears what was kept; before any approval nothing happens |
+| `test-closed-content` | a board whose content our copy says is closed isn't asked for at the start or at the heartbeat, only when told to look again |
+| `test-follower-lets-go` | a board we hold a copy of, out of reach: no extra reads for three hours of tries, then one of `pub/`, and refused, it is let go |
+| `test-note-wakes-follower` | a host's note about one of its boards we follow wakes that board's follower; a note naming another ship's board, or none, doesn't |
 | `test-pay-swap` | ecash in hand: keysets, keys, outputs for the token less the mint's input fee kept before anything is sent, a restore, then the swap; its signatures become proofs, and the writer is asked to settle |
 | `test-pay-stale-answer` | a mint's answer to an earlier request (the keysets again) is let go while the keys are awaited; a failure is taken as it comes, and the step waits 15 s and tries again |
 | `test-pay-resumes-by-restore` | a swap resumed after a restart asks the mint what it signed before it swaps: signed, those are the proofs and no second swap goes |

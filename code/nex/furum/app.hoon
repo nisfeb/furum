@@ -30,6 +30,7 @@
 ::    /grant.json          the shell's record of our grant, with our own path
 ::    /tr/last  /tr/inbox  the writer's last refusal; what other ships poked
 ::    /tr/dir              why the registry's directory last failed to read
+::    /tr/fault            each fault a person should act on, said once (+alarm)
 ::    /rise.json           per fiber, its crashes in a row and its next try
 ::    tile, link, weir and icon: laid fresh on every load
 ::
@@ -101,6 +102,7 @@
           [%fall %& [/tr %last] [[/ %json] [%o ~]]]
           [%fall %& [/tr %inbox] [[/ %json] [%a ~]]]
           [%fall %& [/tr %dir] [[/ %noun] [%1 ~]]]
+          [%fall %& [/tr %fault] [[/ %noun] [%1 ~]]]
           [%fall %& [/ %'rise.json'] [[/ %json] [%o ~]]]
       ==
     ::
@@ -116,10 +118,11 @@
           ::  and drops it when that fiber dies (phase 0, spike B). An ask
           ::  is answered once it is applied, refused or not
           [~ %'main.sig']
-        ;<  ~  bind:m  (rise-later 0 prod "%furum writer: failed")
+        ;<  ~  bind:m  (rise-later 0 prod %writer "%furum writer: failed")
         ::  jailed (no clock yet), the approval reload does this
         ;<  clock=(unit @da)  bind:m  soft-now
         ;<  ~  bind:m  ?~(clock (pure:m ~) ;<(~ bind:m grant-public sweep-all))
+        ;<  ~  bind:m  ?~(clock (pure:m ~) check-grant)
         |-
         ;<  [=from:fiber:nexus =sage:tarball]  bind:m  take-poke-from:io
         ;<  res=(unit deny)  bind:m  (apply from sage)
@@ -132,7 +135,7 @@
           ::  payload's. A local poke is ignored. What the writer refuses
           ::  (it is waiting after a crash) is dropped, not retried
           [~ %'inbox.sig']
-        ;<  ~  bind:m  (rise-later 0 prod "%furum inbox: failed")
+        ;<  ~  bind:m  (rise-later 0 prod %inbox "%furum inbox: failed")
         |-
         ;<  [=from:fiber:nexus =sage:tarball]  bind:m  take-poke-from:io
         =/  src=(unit @p)  (get-poke-src:io from)
@@ -143,13 +146,13 @@
           ::  the HTTP binder. bind-http-self is veto-tolerant: jailed,
           ::  it logs and waits; the approval reload binds for real
           [~ %'web.sig']
-        ;<  ~  bind:m  (rise-later 0 prod "%furum web: failed")
+        ;<  ~  bind:m  (rise-later 0 prod %web "%furum web: failed")
         ;<  ~  bind:m  (bind-http-self:io [~ /apps/furum])
         (http-dispatch:io %furum)
           ::  auto-prune: at each slot of the 6-hour grid, the writer
           ::  prunes every board that asks for it
           [~ %'prune.sig']
-        ;<  ~  bind:m  (rise-later 0 prod "%furum prune: failed")
+        ;<  ~  bind:m  (rise-later 0 prod %prune "%furum prune: failed")
         |-
         ;<  now=@da  bind:m  get-time:io
         ;<  ~  bind:m  (sleep:io (sub (prune-at:fr now) now))
@@ -158,16 +161,16 @@
           ::  the sweeper: when a member's time runs out, the writer
           ::  takes the ship out of the board's group
           [~ %'sweep.sig']
-        ;<  ~  bind:m  (rise-later 0 prod "%furum sweep: failed")
+        ;<  ~  bind:m  (rise-later 0 prod %sweep "%furum sweep: failed")
         ;<  *  bind:m  (keep-soft:io /s (rf 0 / %sweep) ~ ~s30)
         sweeper
           ::  this ship's copy of the registry's directory
           [~ %'dir.sig']
-        ;<  ~  bind:m  (rise-later 0 prod "%furum directory: failed")
+        ;<  ~  bind:m  (rise-later 0 prod %directory "%furum directory: failed")
         (read-registry 0)
           ::  a follower: the mirror of one board on another ship
           [[%follows @ ~] @]
-        ;<  ~  bind:m  (rise-later 2 prod "%furum follower {(trip i.t.path.rail)}/{(trip name.rail)}: failed")
+        ;<  ~  bind:m  (rise-later 2 prod %follower "%furum follower {(trip i.t.path.rail)}/{(trip name.rail)}: failed")
         ;<  our=@p  bind:m  get-our:io
         =/  host=(unit @p)  (slaw %p i.t.path.rail)
         ?:  |(?=(~ host) =(`our host))  (pure:m ~)
@@ -180,14 +183,14 @@
         (send-out name.rail)
           ::  one payment, carried on from the step its grub holds
           [[%pay ~] @]
-        ;<  ~  bind:m  (rise-later 1 prod "%furum payment: failed")
+        ;<  ~  bind:m  (rise-later 1 prod %payment "%furum payment: failed")
         (run-pay name.rail)
           ::  one ephemeral fiber per request. One that crashed ends:
           ::  nothing would poke it awake. The kick first, or a late
           ::  answer queued before it crashes the first step at a reload
           [[%requests ~] @]
         ;<  ~  bind:m  take-kick
-        ?^  prod  ((slog leaf+"%furum request: failed" u.prod) (pure:m ~))
+        ?^  prod  (alarm 1 %crash-request 2 (say-crash %request) u.prod)
         (handle-request name.rail)
       ==
     --
@@ -268,20 +271,20 @@
 ::  replaces what we granted before. Sent by the writer
 ::  itself: the registry keys a grant to the rail that registered, and
 ::  drops a %how from any other fiber without a word. A refused road is
-::  traced, and the boards stay local.
+::  kept at /tr/fault and said once (+alarm), and the boards stay local.
 ::
 ++  grant-public
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
   ;<  reg=(unit tang)  bind:m  (reg-register-at-soft:io [/ %'main.sig'])
-  ?^  reg  (trace:io [leaf+"%furum: no registry road; other ships cannot reach the inbox" u.reg])
+  ?^  reg  (alarm-ungranted 0 %inbox 'poke' '/sys/ames/registry' say-inbox)
   ;<  names=(list @ta)  bind:m  (board-names 0)
   ;<  open=(list road:tarball)  bind:m  (public-roads names)
   ;<  how=(unit tang)  bind:m
     %+  reg-how-soft:io  /public
     [~ (sy ~[(rf 0 / %'inbox.sig')]) (silt [(rf 0 / %registry) open])]
   ?~  how  (pure:m ~)
-  (trace:io [leaf+"%furum: the registry refused the public grant" u.how])
+  (alarm-ungranted 0 %inbox 'poke' '/sys/ames/registry' say-inbox)
 ::  ==  the writer
 ::
 ::  +apply: one op from a poke, answered with why it was refused, or ~.
@@ -536,8 +539,8 @@
   ;<  n=(unit *)  bind:m  (read-noun (rf 0 /follows/(scot %p host) name))
   ?^  n  (pure:m ~)
   (over:io (rf 0 /follows/(scot %p host) name) [[/ %noun] [%1 ~]])
-::  +give-up: its host has no such board. Stop following it, and say when,
-::  so its page says so instead of loading for ever.
+::  +give-up: its host has no such board. Stop following it, drop any
+::  copy we kept, and say when, so its page says so instead of loading.
 ::
 ::  ponytail: /gone keeps one grub per board ever found missing; only the
 ::  owner's own visits make them. Prune them if that ever adds up.
@@ -549,6 +552,7 @@
   ;<  now=@da  bind:m  get-time:io
   ;<  ~  bind:m  (over:io (rf 0 /gone/(scot %p host) name) [[/ %noun] [%1 now]])
   ;<  *  bind:m  (cull-soft:io (rf 0 /follows/(scot %p host) name))
+  ;<  *  bind:m  (cull-soft:io (rv 0 /cache/(scot %p host)/[name]))
   (pure:m ~)
 ::  ==  from other ships
 ::
@@ -595,7 +599,14 @@
   ^-  form:m
   ;<  vw=(unit view:nexus)  bind:m  (peek-soft:io (rv 0 /follows/(scot %p src)) ~)
   ?.  ?=([~ %ball *] vw)  (pure:m ~)
-  (keep-note title body url tags)
+  ;<  ~  bind:m  (keep-note title body url tags)
+  ::  a note from a host about one of its boards we follow (it let us
+  ::  in) has that board's follower ask for its content again
+  =/  at=(unit path)  (biff url |=(u=@t (rush u stap)))
+  ?.  ?=([~ %apps %furum %b @ @ ~] at)  (pure:m ~)
+  ?.  =(`src (slaw %p i.t.t.t.u.at))  (pure:m ~)
+  ;<  *  bind:m  (poke-soft:io (rf 0 /follows/(scot %p src) i.t.t.t.t.u.at) [[/furum %op] ~])
+  (pure:m ~)
 ::  +note-to: a note for someone: kept here if it is for us, else sent
 ::  through the outbox
 ::
@@ -880,7 +891,7 @@
   ^-  form:m
   ;<  n=*  bind:m  (get-state-as:io ,*)
   ?~  g=(mole |.(;;([%1 pay] n)))
-    ((slog leaf+"%furum payment {(trip id)}: unreadable; left as it is" ~) (pure:m ~))
+    (alarm 1 %payment 3 (say-payment id) ~)
   (pay-step id +.u.g 0)
 ::  +pay-go: a payment on to its next step, kept first
 ::
@@ -1154,8 +1165,11 @@
   =/  =request:http
     ?~  body  [%'GET' url ~ ~]
     [%'POST' url ~[['content-type' 'application/json']] `(as-octs:mimes:html (en:json:html u.body))]
-  ;<  err=(unit tang)  bind:m
-    (poke-soft:io &+&+[/sys/iris %'main.iris-state'] [[/ %iris-request] request])
+  ;<  err=(unit ?(%ours %theirs))  bind:m
+    (poke-ours &+&+[/sys/iris %'main.iris-state'] [[/ %iris-request] request])
+  ?:  ?=([~ %ours] err)
+    ;<  ~  bind:m  (alarm-ungranted 1 %iris 'poke' '/sys/iris/' say-iris)
+    (pure:m ~)
   ?^  err  (pure:m ~)
   ((with-timeout:io ,[code=@ud jon=json]) /mint ~m1 (take-response want))
 ::  +take-response: the answer to our request; a chunk of one, a cancel
@@ -1282,11 +1296,11 @@
   =/  gdir=path  (grp-dir name)
   ;<  *  bind:m  (write-soft [%& %| gdir] &+empty-dir:loader |)
   ;<  ok=?  bind:m  (write-soft [%& %& gdir %'who.ships'] |+[[[/ %ships] ships] ~] &)
-  ?.  ok  (trace:io ~[leaf+"%furum: no usergroup road; paid boards stay closed to members"])
+  ?.  ok  (alarm-ungranted 0 %groups 'make' '/sys/ames/usergroups/' say-groups)
   ;<  how=(unit tang)  bind:m
     (reg-how-soft:io /[(grp name)] [~ ~ (sy ~[(rv 0 /boards/[name]/content)])])
   ?~  how  (pure:m ~)
-  (trace:io [leaf+"%furum: the registry refused a member group" u.how])
+  (alarm-ungranted 0 %groups 'poke' '/sys/ames/registry' say-groups)
 ::  +drop-group: a board no longer paid, or gone: its grant taken back,
 ::  then its group
 ::
@@ -1639,9 +1653,9 @@
 ::  us (/access), and the page shows the paywall.
 ::
 ::  Each part starts as a whole copy; then each wave brings only the
-::  grubs whose version moved. Every ten minutes (two, while a board is
-::  closed to us) it copies again and asks again: a host that drops a
-::  reader never says so, and one that lets a reader in doesn't either.
+::  grubs whose version moved. Every ten minutes it copies again: a host
+::  that drops a reader never says so. Content closed to us is not asked
+::  for again until we may have been let in (see below).
 ::
 +$  fev
   $%  [%news part=?(%pub %content) =wave:nexus]
@@ -1657,8 +1671,14 @@
   ;<  base=path  bind:m  (install-of 2 host)
   =/  there=path  (remote host base /boards/[name])
   =/  mine=path  /cache/(scot %p host)/[name]
-  ;<  gone=?  bind:m  ?.(=(0 tries) (pure:(fiber:fiber:nexus ,?) |) (no-board there mine))
-  ?:  gone
+  ::  at first contact, and once a board has been out of reach for three
+  ::  hours, ask its host for pub/ itself (+ask-pub)
+  ;<  have=(map path *)  bind:m  (read-dir 2 mine)
+  ;<  pub=?(%open %ours %theirs %quiet)  bind:m
+    ?.  |(&(=(0 tries) =(~ have)) (gte tries 8))
+      (pure:(fiber:fiber:nexus ,?(%open %ours %theirs %quiet)) %open)
+    (ask-pub there)
+  ?:  ?=(%theirs pub)
     ;<  *  bind:m  (poke-soft:io (rf 2 / %'main.sig') [[/furum %op] `op`[%gone host name]])
     (pure:m ~)
   ;<  w=(unit wave:nexus)  bind:m  (keep-soft:io /fp [%& %| (weld there /pub)] ~ ~s30)
@@ -1666,13 +1686,20 @@
     ;<  ~  bind:m  (sleep:io (min ~h1 (mul ~m1 (bex (min tries 6)))))
     (follow host name +(tries))
   ;<  ~  bind:m  (sync-part there mine /pub)
-  ;<  c=(unit wave:nexus)  bind:m  (open-content there mine)
+  ::  content we know is closed to us is not asked for: the host refuses,
+  ::  and both ships' kernels print the refusal. It is asked again when
+  ::  we may have been let in: the host says so (+take-note), or the
+  ::  owner asks (the paid page, resubscribe): a local poke, %sync
+  ;<  shut=?  bind:m  (closed mine)
+  ;<  c=(unit wave:nexus)  bind:m
+    ?:  shut  (pure:(fiber:fiber:nexus ,(unit wave:nexus)) ~)
+    (open-content there mine)
   =/  lp=(map path cass:clay)  (wave-files /pub u.w)
   =/  lc=(map path cass:clay)  ?~(c ~ (wave-files /content u.c))
   =/  kept=?  ?=(^ c)
   |-
   ;<  now=@da  bind:m  get-time:io
-  ;<  ~  bind:m  (set-timer:io /hb (add now ?:(kept ~m10 ~m2)))
+  ;<  ~  bind:m  (set-timer:io /hb (add now ~m10))
   ;<  e=fev  bind:m  take-fev
   ;<  ~  bind:m  (cancel-timer:io /hb)
   ?-    -.e
@@ -1694,25 +1721,37 @@
     ?:  kept
       ;<  ok=?  bind:m  (read-content there mine)
       $(kept ok, lc ?:(ok lc ~))
+    ?:  ?=(%wake -.e)  $
     ;<  c=(unit wave:nexus)  bind:m  (open-content there mine)
     $(kept ?=(^ c), lc ?~(c ~ (wave-files /content u.c)))
   ==
-::  +no-board: a board we have never read whose host refuses its pub/
-::  (a %veto view, the host's weir; a veto intake is our own weir, which
-::  says nothing of the board). Every hosted board's pub/ is open to
-::  every ship, so its host has no such board. Once we hold a copy a
-::  refusal proves nothing (a host mid-restart refuses for a moment), and
-::  the follower keeps trying.
+::  +ask-pub: a read of a board's pub/, which every hosted board opens
+::  to every ship, and what came of it: %open; %ours, our own weir
+::  refused it (a veto intake; +check-grant reports a missing road);
+::  %theirs, the host's weir refused it (a %veto view), so the host has
+::  no such board; %quiet, no answer. The
+::  follower asks only at first contact, when we hold no copy, and once
+::  a board has been out of reach for three hours: a host mid-restart
+::  refuses for a moment, never for hours.
 ::
-++  no-board
-  |=  [there=path mine=path]
-  =/  m  (fiber:fiber:nexus ,?)
+++  ask-pub
+  |=  there=path
+  =/  m  (fiber:fiber:nexus ,?(%open %ours %theirs %quiet))
   ^-  form:m
-  ;<  have=(map path *)  bind:m  (read-dir 2 mine)
-  ?.  =(~ have)  (pure:m |)
   ;<  vw=(unit (unit view:nexus))  bind:m
     ((with-timeout:io (unit view:nexus)) /nb ~s30 (peek-soft:io [%& %| (weld there /pub)] ~))
-  (pure:m ?=([~ ~ %veto *] vw))
+  ?~  vw  (pure:m %quiet)
+  ?~  u.vw  (pure:m %ours)
+  ?:  ?=([%veto *] u.u.vw)  (pure:m %theirs)
+  (pure:m %open)
+::  +closed: whether our copy says the board's content is closed to us
+::
+++  closed
+  |=  mine=path
+  =/  m  (fiber:fiber:nexus ,?)
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf 2 mine %access))
+  (pure:m =([~ [%1 |]] n))
 ::  +take-fev: what a follower waits for: news or a fell on either keep,
 ::  its heartbeat, or a local poke asking it to look again now
 ::
@@ -1861,6 +1900,12 @@
   ;<  vw=(unit (unit view:nexus))  bind:m
     ((with-timeout:io (unit view:nexus)) /reg ~s30 (peek-soft:io [%& %& there %registry] ~))
   =/  why=(unit @t)  (dir-fault vw)
+  ::  said once: a registry setting that names a ship with no directory.
+  ::  Our own weir refusing is +check-grant's to say; no answer, the
+  ::  registry's refusal and a lost answer are for the directory page
+  ;<  ~  bind:m
+    ?.  &(?=(^ why) ?=([~ ~ *] vw) !?=([~ ~ ?(%veto %miss) *] vw))  (pure:m ~)
+    (alarm 0 %registry 3 (say-registry registry.pf) ~)
   ;<  ~  bind:m
     ?^  why  (pure:m ~)
     ?>  ?=([~ ~ %file *] vw)
@@ -1901,6 +1946,7 @@
   ^-  form:m
   ;<  old=(unit [who=@p why=@t at=@da])  bind:m  (read-dir-trace 0)
   ?:  &(?=(~ t) ?=(~ old))  (pure:m ~)
+  ;<  ~  bind:m  ?.(&(?=(~ t) ?=(^ old)) (pure:m ~) (clear 0 %registry))
   (over:io (rf 0 /tr %dir) [[/ %noun] [%1 t]])
 ::
 ++  read-dir-trace
@@ -2736,6 +2782,133 @@
       ~
     ==
   ==
+::  ==  faults
+::
+::  +alarm: a fault of `kind` seen. It is kept at /tr/fault (its line,
+::  when it began and was last seen, how many times) and said on the
+::  console at `pri` (2 >>, 3 >>>) only when +fault-plan says so: new,
+::  changed, or a crash back after two quiet hours. A trace follows the
+::  line the first time only. A crashed fiber calls it, so it never
+::  fails, and without a clock (a refused /sys/bowl.sig) it does nothing:
+::  every read and write needs one, and the kernel names that veto.
+::
+::  ponytail: two fibers that fault in the same moment each write back
+::  what they read, so a line may be said twice. A grub per kind ends it.
+::
+++  alarm
+  |=  [up=@ud kind=@tas pri=@ud line=tape =tang]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  clock=(unit @da)  bind:m  soft-now
+  ?~  clock  (pure:m ~)
+  ;<  fs=(map @tas fault:fr)  bind:m  (read-faults up)
+  =/  plan  (fault-plan:fr (~(get by fs) kind) (crip line) u.clock ?:(=(2 pri) `~h2 ~))
+  ;<  ~  bind:m  (write-faults up (~(put by fs) kind new.plan))
+  ?.  say.plan  (pure:m ~)
+  (pure:m ((%*(. slog pri pri) [leaf+line ?:(=(1 n.new.plan) tang ~)]) ~))
+::  +alarm-ungranted: a road refused where it was used. It is ours to
+::  say only if the shell's grant lacks it: a granted road refused is the
+::  weir catching up with an approval (the shell restarts the app before
+::  it applies the new weir), and a reload follows. Before any approval
+::  (no grant.json) the shell is asking, and nothing is said either.
+::
+++  alarm-ungranted
+  |=  [up=@ud kind=@tas verb=@t road=@t line=tape]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  grant=json  bind:m  (read-json (rf up / %'grant.json'))
+  ?.  ?=([%o *] grant)  (pure:m ~)
+  ?:  (granted:fr grant verb road)  (pure:m ~)
+  (alarm up kind 3 line ~)
+::  +clear: a kind's cause has gone; its fault goes, silently
+::
+++  clear
+  |=  [up=@ud kind=@tas]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  fs=(map @tas fault:fr)  bind:m  (read-faults up)
+  ?.  (~(has by fs) kind)  (pure:m ~)
+  (write-faults up (~(del by fs) kind))
+::
+++  write-faults
+  |=  [up=@ud fs=(map @tas fault:fr)]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  *  bind:m  (over-as-soft:io (rf up /tr %fault) [[/ %noun] [%1 fs]] [/ %noun])
+  (pure:m ~)
+::
+++  read-faults
+  |=  up=@ud
+  =/  m  (fiber:fiber:nexus ,(map @tas fault:fr))
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf up /tr %fault))
+  (pure:m (fall (biff n |=(v=* (bind (mole |.(;;([%1 (map @tas fault:fr)] v))) tail))) ~))
+::  what the console says of each fault, worded once: what is wrong,
+::  then what to do. Variable parts go last, so a line can be searched.
+::
+++  say-timer  "%furum: no timer, so it can't prune, sweep, or retry after a crash. Allow furum /sys/behn/ (may poke) on grubbery's permissions page."
+++  say-inbox  "%furum: other ships can't reach this ship's boards or inbox. Allow furum /sys/ames/registry (may poke) on grubbery's permissions page."
+++  say-groups  "%furum: members can't read this ship's paid boards. Allow furum /sys/ames/usergroups/ (may create & remove files) and /sys/ames/registry (may poke) on grubbery's permissions page."
+++  say-read  "%furum: may not read other ships, so their boards and the directory stay empty. Allow furum /sys/ames/ships/ (may read) on grubbery's permissions page."
+++  say-send  "%furum: may not send to other ships, so its posts, votes and registrations there are lost. Allow furum /sys/ames/ships/ (may poke) on grubbery's permissions page."
+++  say-iris  "%furum: may not reach Cashu mints, so nobody can pay for this ship's boards. Allow furum /sys/iris/ (may poke) on grubbery's permissions page."
+++  say-registry
+  |=  who=@p
+  "%furum: the registry setting names a ship that keeps no directory furum can read. Set the registry ship on furum's admin page: {(scow %p who)}"
+++  say-crash
+  |=  kind=@tas
+  "%furum {(trip kind)}: crashed, and tries again by itself (rise.json counts the tries). If it keeps crashing, report it with this trace."
+++  say-payment
+  |=  id=@ta
+  "%furum: a payment's record can't be read, so it is left as it is. Report it: /pay/{(trip id)}"
+++  say-web  "%furum: may not serve its pages at /apps/furum. Allow furum /sys/eyre/ (may poke) on grubbery's permissions page."
+::  +check-grant: at the writer's start (every load, so every approval),
+::  the faults the shell's grant explains: each missing road furum can't
+::  do without, kept and said once; each granted one, its fault cleared.
+::  Before any approval there is no grant.json, the shell is asking, and
+::  furum says nothing. /sys/push/ and /sys/scry/ go unchecked: furum
+::  works without them, as their weir lines say.
+::
+++  needs
+  ^-  (list [kind=@tas verb=@t road=@t must=? line=@t])
+  :~  [%web 'poke' '/sys/eyre/' & (crip say-web)]
+      [%timer 'poke' '/sys/behn/' & (crip say-timer)]
+      [%inbox 'poke' '/sys/ames/registry' & (crip say-inbox)]
+      [%send 'poke' '/sys/ames/ships/' & (crip say-send)]
+      [%read 'peek' '/sys/ames/ships/' & (crip say-read)]
+      [%iris 'poke' '/sys/iris/' | (crip say-iris)]
+      [%groups 'make' '/sys/ames/usergroups/' | (crip say-groups)]
+  ==
+++  check-grant
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  grant=json  bind:m  (read-json (rf 0 / %'grant.json'))
+  ?.  ?=([%o *] grant)  (pure:m ~)
+  ;<  clock=(unit @da)  bind:m  soft-now
+  ?~  clock  (pure:m ~)
+  ;<  fs=(map @tas fault:fr)  bind:m  (read-faults 0)
+  =/  plan  (grant-faults:fr fs grant u.clock needs)
+  ;<  ~  bind:m  ?:(=(fs.plan fs) (pure:m ~) (write-faults 0 fs.plan))
+  (pure:m ((%*(. slog pri 3) (turn say.plan |=(l=@t leaf+(trip l)))) ~))
+::  +poke-ours: a poke, and why it didn't land: ~ when it did; %ours when
+::  our own weir refused it (a road furum wasn't granted); %theirs when
+::  it failed further on (the other end refused it, or crashed on it)
+::
+++  poke-ours
+  |=  [=road:tarball =bask:tarball]
+  =/  m  (fiber:fiber:nexus ,(unit ?(%ours %theirs)))
+  ^-  form:m
+  ;<  =wire  bind:m  (nonce:io /poke)
+  ;<  ~  bind:m  (send-dart:io %node wire road %poke bask)
+  |=  input:fiber:nexus
+  :+  ~  q.state
+  ?+  in  [%skip ~]
+      ~  [%wait ~]
+      [~ %veto *]  [%done `%ours]
+      [~ %pack * *]
+    ?.  =(wire wire.u.in)  [%skip ~]
+    [%done ?~(err.u.in ~ `%theirs)]
+  ==
 ::  ==  after a crash: orrery's +rise-later (version 60), copied whole
 ::
 ::  +rise-later: a fiber that crashed goes on after a while by itself,
@@ -2757,7 +2930,7 @@
 ::  still waits. A grub per fiber would end it.
 ::
 ++  rise-later
-  |=  [up=@ud =prod:fiber:nexus msg=tape]
+  |=  [up=@ud =prod:fiber:nexus kind=@tas msg=tape]
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
   ;<  ~  bind:m  take-kick
@@ -2771,9 +2944,8 @@
   =/  note=tang  ~[leaf+"{msg}: waiting after a crash; the poke was refused"]
   =/  crash=?  !=(note u.prod)
   ;<  clock=(unit @da)  bind:m  soft-now
-  ?~  clock
-    %-  ?.(crash same (slog [leaf+"{msg}: no clock (weir?); waiting for a poke" u.prod]))
-    (rise-park note)
+  ::  no clock: nothing can be read or kept, and the kernel names the veto
+  ?~  clock  (rise-park note)
   =/  now=@da  u.clock
   ;<  log=json  bind:m  (read-json (rf up / %'rise.json'))
   =/  plan  (rise-plan:fr (gj:fr log key) crash now)
@@ -2781,9 +2953,6 @@
   ;<  ~  bind:m
     =/  m  (fiber:fiber:nexus ,~)
     ?.  crash  (pure:m ~)
-    %-  %-  slog
-        ?:  (lte n.plan 2)  [leaf+msg u.prod]
-        ~[leaf+"{msg} again ({(a-co:co n.plan)} times running); next try in {(a-co:co (div (sub until.plan now) ~m1))} min"]
     ;<  *  bind:m
       %^  over-as-soft:io  (rf up / %'rise.json')
         [[/ %json] (set-key:fr log key (rise-row:fr plan now))]
@@ -2791,7 +2960,10 @@
     (pure:m ~)
   ;<  set=?  bind:m
     (soft-behn /rise/set [[/ %timer-set] `[wire @da]`[/rise until.plan]])
-  %-  ?:(|(set !crash) same (slog leaf+"{msg}: no timer (weir?); waiting for a poke" ~))
+  ::  no timer: a refused /sys/behn/, which +check-grant says at the
+  ::  writer's start; nothing more is said here, whatever crashed for it
+  ?.  set  (rise-park note)
+  ;<  ~  bind:m  ?.(crash (pure:m ~) (alarm up (cat 3 'crash-' kind) 2 (say-crash kind) u.prod))
   (rise-park note)
 ::  +take-kick: the start's kick, taken before anything is sent (rule 9
 ::  of the crash-loop rules). A reload or a restart queues a null kick

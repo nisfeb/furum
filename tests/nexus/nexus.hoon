@@ -19,8 +19,9 @@
   ^-  trail:ft
   ?:  =(0 n)  t
   $(n (dec n), t (answer-peek:ft a-world:ft t [%none ~]))
-::  the writer risen: its grants and its sweep each list the boards first
-++  writer  ^-(trail:ft (nones 2 (start a-world:ft [~ %'main.sig'] ~)))
+::  the writer risen: its grants and its sweep each list the boards
+::  first, then it reads its grant (none yet: it says nothing)
+++  writer  ^-(trail:ft (nones 3 (start a-world:ft [~ %'main.sig'] ~)))
 ::  only what a run did after `a`
 ++  new  |=([a=trail:ft b=trail:ft] ^-(trail:ft b(darts (slag (lent darts.a) darts.b))))
 ::  answer each read, by what it reads, while the fiber waits on one
@@ -51,6 +52,28 @@
 ::  every registry action a run sent
 ++  reg-acts  |=(t=trail:ft (turn (pokes:ft t [/usergroups %registry-action]) tail))
 ++  jailed  ^-(world:ft =/(w a-world:ft w(refuse ~[/sys])))
+::  a road to a directory on another ship, ending in `last`
+++  remote-to
+  |=  [r=road:tarball last=@ta]
+  ^-  ?
+  ?.  ?=([%& %| ^] r)  |
+  =/  p=path  p.p.r
+  &(=((scag 3 p) /sys/ames/ships) =((rear p) last))
+::  the faults a run kept at /tr/fault, by kind
+++  fault-kinds
+  |=  t=trail:ft
+  ^-  (list @tas)
+  %-  zing
+  %+  murn  (made-files t)
+  |=  [r=road:tarball n=*]
+  ?.  ?=([%| @ %& [%tr ~] %fault] r)  ~
+  `~(tap in ~(key by +:;;([%1 (map @tas fault:fr)] n)))
+::  what a run wrote of the directory and its trace
+++  dir-files
+  |=  t=trail:ft
+  %+  skim  (made-files t)
+  |=  [r=road:tarball *]
+  |(=(r (rf 0 / %directory)) =(r (rf 0 /tr %dir)))
 ++  made-files
   |=  t=trail:ft
   ^-  (list [road:tarball *])
@@ -109,18 +132,27 @@
   ==
 ::
 ::  a crash waits a minute before the fiber tries again: rise.json gets
-::  the count and a timer is set for the retry. Its own wake brings the
-::  writer back up; another timer's does not
+::  the count, a timer is set for the retry, and the crash is kept at
+::  /tr/fault (said once). Its own wake brings the writer back up;
+::  another timer's does not
 ::
 ++  test-crash-waits-then-rises
   =/  t  (start a-world:ft [~ %'main.sig'] `~[leaf+"boom"])
-  =/  t  (answer-peek:ft a-world:ft t [%none ~])
+  ::  rise.json, then the faults
+  =/  t  (nones 2 t)
   =/  wake  |=(w=wire (poke *from:fiber:nexus [[/ %timer-wake] !>(w)]))
   =/  other  (feed:ft a-world:ft t (wake /other))
   =/  woke  (nones 1 (feed:ft a-world:ft t (wake /rise)))
   ;:  weld
     (expect-eq !>(%wait) !>(end.t))
-    (expect-eq !>(~[(rf 0 / %'rise.json')]) !>((made t)))
+    (expect-eq !>(~[(rf 0 / %'rise.json') (rf 0 /tr %fault)]) !>((made t)))
+    %+  expect-eq  !>(`(list [@tas @da @da @ud])`~[[%crash-writer now now 1]])
+    !>  %-  zing
+        %+  murn  (made-files t)
+        |=  [r=road:tarball n=*]
+        ?.  =(r (rf 0 /tr %fault))  ~
+        =/  fs  ;;([%1 (map @tas fault:fr)] n)
+        `(turn ~(tap by +.fs) |=([k=@tas f=fault:fr] [k at.f last.f n.f]))
     %+  expect-eq  !>(`(list *)`~[[/rise (add now ~m1)]])
       !>((turn (pokes:ft t [/ %timer-set]) |=([* n=*] n)))
     (expect-eq !>(~) !>((pokes:ft other [/usergroups %registry-action])))
@@ -137,8 +169,8 @@
       !>(~)
       (poke *from:fiber:nexus (op [%from ~nec [/foo %bar] ~]))
     ==
-  ::  the rise's two board listings, then the inbox ring
-  =/  t  (nones 3 t)
+  ::  the rise's two board listings, its grant, then the inbox ring
+  =/  t  (nones 4 t)
   ;:  weld
     (expect-eq !>(%wait) !>(end.t))
     (expect-eq !>(~[(rf 0 / %sweep) (rf 0 /tr %inbox)]) !>((made t)))
@@ -214,6 +246,117 @@
     (expect-eq !>(1) !>((lent (pokes:ft wanted [/ %push-action]))))
   ==
 ::
+::  a host's note about a board of its that we follow (it let us in)
+::  wakes that board's follower; a note naming another ship's board, or
+::  none, wakes nothing
+::
+++  test-note-wakes-follower
+  =/  following  [%ball *wave:nexus (as-ball (my ~[[/b ~]]))]
+  =/  run
+    |=  [src=@p url=(unit @t)]
+    =/  t
+      %+  feed:ft  a-world:ft
+      :-  writer
+      %+  poke  *from:fiber:nexus
+      [[/furum %op] !>([%from src [/furum %msg] [%note 'You can read a paid board' 'x' url (sy ~[%payments])]])]
+    %^  serve  6  t
+    |=(r=road:tarball ?:(=(r (rv 0 /follows/(scot %p src))) following [%none ~]))
+  =/  woke
+    |=  t=trail:ft
+    ^-  (list road:tarball)
+    %+  murn  (pokes:ft (new writer t) [/furum %op])
+    |=([r=road:tarball *] ?.(?=([%| @ %& [%follows @ ~] @] r) ~ `r))
+  ;:  weld
+    (expect-eq !>(~[(rf 0 /follows/~bus %b)]) !>((woke (run ~bus `'/apps/furum/b/~bus/b'))))
+    (expect-eq !>(~) !>((woke (run ~bus `'/apps/furum/b/~nec/b'))))
+    (expect-eq !>(~) !>((woke (run ~bus ~))))
+  ==
+::
+::  a board whose content our copy says is closed to us: its follower
+::  doesn't ask for the content at the start, nor at its heartbeat,
+::  since the host would refuse and both kernels print it; asked to look
+::  again (a local poke), it does
+::
+++  test-closed-content
+  =/  wake  |=(w=wire (poke *from:fiber:nexus [[/ %timer-wake] !>(w)]))
+  =/  copy
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rv 2 /cache/~nec/b))  [%ball *wave:nexus (as-ball (my ~[[/pub/card ~]]))]
+    ?:  =(r (rf 2 /cache/~nec/b %access))  (file [%1 |])
+    [%none ~]
+  =/  asks  |=(t=trail:ft (lent (skim (peeks:ft t) |=(r=road:tarball (remote-to r %content)))))
+  =/  up  (serve 3 (start a-world:ft [/follows/~nec %b] ~) copy)
+  =/  up  (serve 4 (feed:ft a-world:ft up [%news /fp *wave:nexus]) copy)
+  =/  beat  (serve 4 (feed:ft a-world:ft up (wake /hb)) copy)
+  =/  told  (serve 4 (feed:ft a-world:ft beat (poke *from:fiber:nexus [[/furum %op] !>(~)])) copy)
+  ;:  weld
+    (expect-eq !>(0) !>((asks up)))
+    (expect-eq !>(0) !>((asks beat)))
+    (expect-eq !>(1) !>((asks told)))
+  ==
+::
+::  a board we hold a copy of, out of reach: its follower keeps trying,
+::  asking nothing more, until three hours of tries; then it asks the
+::  host for pub/, and refused it lets the board go
+::
+++  test-follower-lets-go
+  =/  wake  |=(w=wire (poke *from:fiber:nexus [[/ %timer-wake] !>(w)]))
+  =/  held
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rv 2 /cache/~nec/b))  [%ball *wave:nexus (as-ball (my ~[[/pub/card ~]]))]
+    [%none ~]
+  ::  one round: its reads, the keep's deadline, the wait before the next
+  =/  round
+    |=  t=trail:ft
+    (feed:ft a-world:ft (feed:ft a-world:ft (serve 3 t held) (wake /fp/keep-deadline)) (wake /wait))
+  =/  pubs  |=(t=trail:ft (lent (skim (peeks:ft t) |=(r=road:tarball (remote-to r %pub)))))
+  =/  gone  |=(t=trail:ft (turn (pokes:ft t [/furum %op]) tail))
+  =/  t  (start a-world:ft [/follows/~nec %b] ~)
+  =/  t  (round (round (round (round (round (round (round (round t))))))))
+  =/  t  (serve 3 t held)
+  =/  let  (answer-peek:ft a-world:ft t [%veto ~])
+  ;:  weld
+    (expect-eq !>(1) !>((pubs t)))
+    (expect-eq !>(`(list *)`~[[%gone ~nec %b]]) !>((gone let)))
+  ==
+::
+::  the writer's start reads the shell's grant: a road furum can't do
+::  without that isn't granted is kept as a fault (and said); a road only
+::  needed in use isn't; a grant with everything clears what was kept;
+::  before any approval (no grant.json) nothing happens
+::
+++  test-check-grant
+  =/  grant
+    |=  [poke=(list @t) peek=(list @t)]
+    %-  pairs:enjs:format
+    :~  ['poke' a+(turn poke |=(r=@t s+r))]
+        ['peek' a+(turn peek |=(r=@t s+r))]
+        ['make' a+~]
+    ==
+  =/  all  `(list @t)`~['/sys/bowl.sig' '/sys/eyre/' '/sys/behn/' '/sys/ames/registry' '/sys/ames/ships/' '/sys/iris/']
+  =/  run
+    |=  [g=(unit json) kept=(map @tas fault:fr)]
+    %^  serve  4  (start a-world:ft [~ %'main.sig'] ~)
+    |=  r=road:tarball
+    ?:  =(r (rf 0 / %'grant.json'))  ?~(g [%none ~] [%file *cass:clay [[/ %json] %& !>(u.g)]])
+    ?:  =(r (rf 0 /tr %fault))  (file [%1 kept])
+    [%none ~]
+  =/  stale  (my ~[[%timer ['x' now now 1]] [%groups ['y' now now 1]]])
+  ;:  weld
+    ::  no grant yet: nothing
+    (expect-eq !>(~) !>((fault-kinds (run ~ ~))))
+    ::  /sys/behn/ refused: that fault alone (/sys/ames/usergroups/ is
+    ::  only needed once a board is paid)
+    %+  expect-eq  !>(~[%timer])
+      !>((fault-kinds (run `(grant (skip all |=(r=@t =(r '/sys/behn/'))) ~['/sys/ames/ships/']) ~)))
+    ::  everything granted again: the kept timer fault goes; the group
+    ::  fault stays until a grant names /sys/ames/usergroups/
+    %+  expect-eq  !>(~[%groups])
+      !>((fault-kinds (run `(grant all ~['/sys/ames/ships/']) stale)))
+  ==
+::
 ::  following another ship's board puts it in the feed and starts its
 ::  mirror; following our own only the feed; unfollowing only the feed
 ::
@@ -262,26 +405,30 @@
   =/  later  (serve 2 (feed:ft a-world:ft again (wake /timeout/reg)) none)
   ::  the read is refused
   =/  shut  =/(w a-world:ft w(refuse ~[/sys/ames/ships]))
-  =/  no  (serve-in shut 2 (begin shut (start shut [~ %'dir.sig'] ~)) none)
+  =/  no  (serve-in shut 3 (begin shut (start shut [~ %'dir.sig'] ~)) none)
   ::  the registry refuses it
   =/  theirs  (serve 2 (answer-peek:ft a-world:ft up [%veto ~]) none)
   ::  it reads, after a failure was traced
   =/  was  [%1 `[~ricsul-bilwyt 'it did not answer in time' now]]
   =/  ok  (answer-peek:ft a-world:ft up (file [%1 *registry-store]))
-  =/  ok  (serve 2 ok |=(r=road:tarball ?:(=(r (rf 0 /tr %dir)) (file was) [%none ~])))
+  =/  ok  (serve 3 ok |=(r=road:tarball ?:(=(r (rf 0 /tr %dir)) (file was) [%none ~])))
   ;:  weld
     (expect-eq !>(`(list [road:tarball *])`~[[(rf 0 /tr %dir) was]]) !>((made-files late)))
+    ::  no answer is kept for the page, and said nowhere
+    (expect-eq !>(~) !>((fault-kinds late)))
     (expect-eq !>([/rh (add now ~m1)]) !>((rear (timers late))))
     (expect-eq !>([/rh (add now ~m2)]) !>((rear (timers later))))
     %+  expect-eq
       !>  ^-  (list [road:tarball *])  ~[[(rf 0 /tr %dir) [%1 `[~ricsul-bilwyt 'this ship does not let furum read other ships. On grubbery\'s permissions page, allow furum /sys/ames/ships/ under "may read"' now]]]]
-    !>((made-files no))
+    !>((dir-files no))
+    (expect-eq !>(~) !>((fault-kinds no)))
     %+  expect-eq
       !>  ^-  (list [road:tarball *])  ~[[(rf 0 /tr %dir) [%1 `[~ricsul-bilwyt 'it refused to let this ship read it' now]]]]
-    !>((made-files theirs))
+    !>((dir-files theirs))
+    (expect-eq !>(~) !>((fault-kinds theirs)))
     %+  expect-eq
       !>  ^-  (list [road:tarball *])  ~[[(rf 0 / %directory) [%1 *registry-store]] [(rf 0 /tr %dir) [%1 ~]]]
-    !>((made-files ok))
+    !>((dir-files ok))
     (expect-eq !>([/rh (add now ~h1)]) !>((rear (timers ok))))
   ==
 ::
@@ -300,7 +447,7 @@
   =/  gone  |=(t=trail:ft (turn (pokes:ft t [/furum %op]) tail))
   =/  fresh  (answer-peek:ft a-world:ft (serve 3 (start a-world:ft [/follows/~nec %b] ~) none) [%veto ~])
   ::  our own weir refuses the read: nothing is known of the board
-  =/  ours  (serve-in shut 3 (start shut [/follows/~nec %b] ~) none)
+  =/  ours  (serve-in shut 4 (start shut [/follows/~nec %b] ~) none)
   ::  a copy of it here
   =/  held
     %-  serve-in
@@ -314,6 +461,8 @@
   ;:  weld
     (expect-eq !>([%done `(list *)`~[[%gone ~nec %b]] 0]) !>([end.fresh (gone fresh) (keeps fresh)]))
     (expect-eq !>([`(list *)`~ 1]) !>([(gone ours) (keeps ours)]))
+    ::  our own weir refusing is the grant check's to say, not this
+    (expect-eq !>(~) !>((fault-kinds ours)))
     (expect-eq !>([`(list *)`~ 1]) !>([(gone held) (keeps held)]))
     (expect-eq !>([`(list *)`~ 1]) !>([(gone quiet) (keeps quiet)]))
   ==
@@ -988,8 +1137,10 @@
     (expect-eq !>(%.y) !>((lien (culls t) |=(r=road:tarball =(r (rf 0 /pay %x))))))
     %+  expect-eq  !>(`(list *)`~[[%1 (my ~[[~nec until]])]])
       !>((murn (made-files t) |=([r=road:tarball n=*] ?.(=(r (rf 0 /members %b)) ~ `n))))
-    %+  expect-eq  !>(`(list *)`~[[~nec %pay %b 'n1' %paid until]])
-      !>((murn (made-files t) |=([r=road:tarball n=*] ?.(?=([%| @ %& [%outbox ~] @] r) ~ `n))))
+    ::  the note that the payer may read the board, and the payment's answer
+    %+  expect-eq
+      !>  `(list *)`~[[~nec %note 'You can read a paid board' '~zod let you read b' `'/apps/furum/b/~zod/b' (sy ~[%payments])] [~nec %pay %b 'n1' %paid until]]
+    !>((murn (made-files t) |=([r=road:tarball n=*] ?.(?=([%| @ %& [%outbox ~] @] r) ~ `n))))
     (expect-eq !>(%.n) !>((lien (culls bad) |=(r=road:tarball =(r (rf 0 /pay %x))))))
   ==
 ::

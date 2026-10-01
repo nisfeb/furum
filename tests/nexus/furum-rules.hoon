@@ -184,4 +184,33 @@
     (expect-eq !>(%.y) !>((cross-site:fr (sfs 'same-site'))))
     (expect-eq !>(%.y) !>((cross-site:fr (sfs 'none'))))
   ==
+::
+::  a fault is said when it is new or its line changed, and counted when
+::  it is kept already; a crash (again ~h2) is said again after two quiet
+::  hours, a fault waiting for a person never
+::
+++  test-fault-plan
+  =/  now  ~2026.1.1
+  =/  old=fault:fr  ['x' now now 1]
+  ;:  weld
+    (expect-eq !>([& ['x' now now 1]]) !>((fault-plan:fr ~ 'x' now ~)))
+    (expect-eq !>([| ['x' now (add now ~m5) 2]]) !>((fault-plan:fr `old 'x' (add now ~m5) ~)))
+    (expect-eq !>([& ['y' now (add now ~m5) 2]]) !>((fault-plan:fr `old 'y' (add now ~m5) ~)))
+    (expect-eq !>([| ['x' now (add now ~h3) 2]]) !>((fault-plan:fr `old 'x' (add now ~h3) ~)))
+    (expect-eq !>([& ['x' (add now ~h3) (add now ~h3) 1]]) !>((fault-plan:fr `old 'x' (add now ~h3) `~h2)))
+    (expect-eq !>([| ['x' now (add now ~h1) 2]]) !>((fault-plan:fr `old 'x' (add now ~h1) `~h2)))
+  ==
+::
+::  the grant's faults: a granted road's fault goes; a missing one that
+::  must be there is kept and said once; one only needed in use is not
+::
+++  test-grant-faults
+  =/  now  ~2026.1.1
+  =/  grant  (need (de:json:html '{"poke":["/sys/behn/"],"peek":[]}'))
+  =/  needs  ~[[%timer 'poke' '/sys/behn/' & 'T'] [%read 'peek' '/sys/ames/ships/' & 'R'] [%iris 'poke' '/sys/iris/' | 'I']]
+  =/  kept  (my ~[[%timer ['T' now now 1]] [%read ['R' now now 1]]])
+  ;:  weld
+    (expect-eq !>([(my ~[[%read ['R' now now 1]]]) ~['R']]) !>((grant-faults:fr ~ grant now needs)))
+    (expect-eq !>([(my ~[[%read ['R' now now 2]]]) ~]) !>((grant-faults:fr kept grant now needs)))
+  ==
 --

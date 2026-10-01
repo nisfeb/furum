@@ -336,6 +336,14 @@
         (crip "{(scow %p who)} replied to your comment on '{(trip title.u.p)}'")
         url  (sy ~[%comments])
     ==
+  ::  a ship let in to a paid board hears of it, and its copy of the
+  ::  board asks for the content again (it doesn't while shut out)
+      %grant-paid
+    ?:  =(who who.action)  ~
+    :~  :*  who.action  'You can read a paid board'
+            (crip "{(scow %p host)} let you read {(trip name.action)}")
+            (at "")  (sy ~[%payments])
+    ==  ==
   ==
 ::
 ::  +drop-posts: posts gone, with their threads

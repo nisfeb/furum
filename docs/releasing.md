@@ -197,14 +197,15 @@ Furum's dev ships don't use `write-text`: `scripts/dev-deploy.py` mirrors `code/
 3. `python3 scripts/weir-check.py code/nex/furum/app.hoon --io <grubbery checkout>/desk/lib/fiberio.hoon` prints `0 reached-but-undeclared`. The `/sys/ames/ships/` lines read unused: those roads are built by `+remote`, which the check can't follow.
 4. The unit suites are green: `HOON_TEST_CONF=hoon-test-nexus.conf scripts/hoon-test-kit/hoon-test.sh <pier>`. They include the crash rules: a refusing weir (`test-refusing-weir-parks`) and restarts under writes (`test-restart-under-writes`).
 5. The upgrade (crash rule 7): deploy the release over the last one on a dev ship that has boards, posts and a paid board, and check the instance's `bang` is `null` before running the rest.
-6. On the dev ships, each prints `0 failed`:
+6. The quiet gate (`docs/logging.md`): the upgrade of step 5 prints nothing from furum, then `python3 scripts/quiet-gate.py $B $JB <tmux pane of ~b>` prints `passed`: a reload says nothing, a refused road one line, kept at `/tr/fault`, and the whole grant again nothing, the fault cleared.
+7. On the dev ships, each prints `0 failed`:
    - `python3 scripts/api-matrix.py $A $JA ~a`
    - `python3 scripts/xship.py $A $JA ~a $B $JB ~b`
    - `python3 scripts/access.py $A $JA ~a $B $JB ~b`
    - `python3 scripts/pay.py $A $JA ~a $B $JB ~b <mint> <venv>`, against a local FakeWallet mint, never a real one.
-7. Open `/apps/furum` on a dev ship in a browser: a board, a post, the theme page (System, Light and Dark, a saved theme, an accent), and the pages on a phone-width window.
-8. Read `+weir-json` in `code/nex/furum/app.hoon` against the last release, and name any new line in the release note: a new road raises the consent prompt on every ship.
-9. `git push origin master`, then the publisher's steps: the forge pull (or the poll), the four reads of section 4, and, when the release added a road, the consent on `/apps/grubbery/permits` followed by a reload of the instance.
+8. Open `/apps/furum` on a dev ship in a browser: a board, a post, the theme page (System, Light and Dark, a saved theme, an accent), and the pages on a phone-width window.
+9. Read `+weir-json` in `code/nex/furum/app.hoon` against the last release, and name any new line in the release note: a new road raises the consent prompt on every ship.
+10. `git push origin master`, then the publisher's steps: the forge pull (or the poll), the four reads of section 4, and, when the release added a road, the consent on `/apps/grubbery/permits` followed by a reload of the instance.
 
 ### Version 1's owner steps (the first release)
 

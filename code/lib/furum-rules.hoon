@@ -213,4 +213,50 @@
       ['last_ms' (numb:enjs:format (ms-of now))]
       ['until_ms' (numb:enjs:format (ms-of until.plan))]
   ==
+::  ==  faults: what the console hears, once
+::
+::  A fault kept at /tr/fault: the line said of it, when it began, when
+::  it was last seen, and how many times. +fault-plan says whether a new
+::  sighting is said on the console: a fault not kept yet, or one whose
+::  line changed (a new cause), is; one already kept is only counted.
+::  A fault that repairs itself (a crash) is said again when it comes
+::  back after `again` of quiet; one that waits for a person never is,
+::  until it is cleared.
+::
++$  fault  [line=@t at=@da last=@da n=@ud]
+++  fault-plan
+  |=  [old=(unit fault) line=@t now=@da again=(unit @dr)]
+  ^-  [say=? new=fault]
+  ?~  old  [& line now now 1]
+  ?:  &(?=(^ again) (gth now (add last.u.old u.again)))  [& line now now 1]
+  ?.  =(line line.u.old)  [& line at.u.old now +(n.u.old)]
+  [| u.old(last now, n +(n.u.old))]
+::
+::  +grant-faults: the faults furum's grant explains, from the shell's
+::  grant.json at the writer's start. A need whose road is granted has
+::  its fault cleared; a missing one that `must` be there is kept and,
+::  if new, said. One that matters only once it is used (a mint, a paid
+::  board's group) is said where it is used, and only cleared here.
+::
+++  grant-faults
+  |=  $:  fs=(map @tas fault)  grant=json  now=@da
+          needs=(list [kind=@tas verb=@t road=@t must=? line=@t])
+      ==
+  ^-  [fs=(map @tas fault) say=(list @t)]
+  =|  say=(list @t)
+  |-
+  ?~  needs  [fs (flop say)]
+  =*  n  i.needs
+  ?:  (granted grant verb.n road.n)  $(needs t.needs, fs (~(del by fs) kind.n))
+  ?.  must.n  $(needs t.needs)
+  =/  p  (fault-plan (~(get by fs) kind.n) line.n now ~)
+  $(needs t.needs, fs (~(put by fs) kind.n new.p), say ?.(say.p say [line.n say]))
+::  +granted: is this road in the grant, under this verb (poke, peek, make)
+::
+++  granted
+  |=  [grant=json verb=@t road=@t]
+  ^-  ?
+  =/  v=json  (gj grant verb)
+  ?.  ?=([%a *] v)  |
+  (lien p.v |=(j=json =(j s+road)))
 --
