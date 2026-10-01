@@ -190,7 +190,7 @@
           ::  answer queued before it crashes the first step at a reload
           [[%requests ~] @]
         ;<  ~  bind:m  take-kick
-        ?^  prod  (alarm 1 %crash-request 2 (say-crash %request) u.prod)
+        ?^  prod  (alarm 1 %crash-request 2 (say-crash %request) ~)
         (handle-request name.rail)
       ==
     --
@@ -2846,7 +2846,6 @@
 ::  what the console says of each fault, worded once: what is wrong,
 ::  then what to do. Variable parts go last, so a line can be searched.
 ::
-++  say-timer  "%furum: no timer, so it can't prune, sweep, or retry after a crash. Allow furum /sys/behn/ (may poke) on grubbery's permissions page."
 ++  say-inbox  "%furum: other ships can't reach this ship's boards or inbox. Allow furum /sys/ames/registry (may poke) on grubbery's permissions page."
 ++  say-groups  "%furum: members can't read this ship's paid boards. Allow furum /sys/ames/usergroups/ (may create & remove files) and /sys/ames/registry (may poke) on grubbery's permissions page."
 ++  say-read  "%furum: may not read other ships, so their boards and the directory stay empty. Allow furum /sys/ames/ships/ (may read) on grubbery's permissions page."
@@ -2857,7 +2856,7 @@
   "%furum: the registry setting names a ship that keeps no directory furum can read. Set the registry ship on furum's admin page: {(scow %p who)}"
 ++  say-crash
   |=  kind=@tas
-  "%furum {(trip kind)}: crashed, and tries again by itself (rise.json counts the tries). If it keeps crashing, report it with this trace."
+  "%furum {(trip kind)}: crashed, and tries again by itself (rise.json counts the tries). If it keeps crashing, report it with the kernel's %fiber-crash trace before this line."
 ++  say-payment
   |=  id=@ta
   "%furum: a payment's record can't be read, so it is left as it is. Report it: /pay/{(trip id)}"
@@ -2867,12 +2866,15 @@
 ::  do without, kept and said once; each granted one, its fault cleared.
 ::  Before any approval there is no grant.json, the shell is asking, and
 ::  furum says nothing. /sys/push/ and /sys/scry/ go unchecked: furum
-::  works without them, as their weir lines say.
+::  works without them, as their weir lines say. Nor are /sys/bowl.sig
+::  and /sys/behn/: refused, they park the fiber that first uses them,
+::  and the kernel says that once for the app (its parked line), with
+::  the parked grub's bang as the record. Furum says only what fails
+::  softly, which the kernel doesn't report.
 ::
 ++  needs
   ^-  (list [kind=@tas verb=@t road=@t must=? line=@t])
   :~  [%web 'poke' '/sys/eyre/' & (crip say-web)]
-      [%timer 'poke' '/sys/behn/' & (crip say-timer)]
       [%inbox 'poke' '/sys/ames/registry' & (crip say-inbox)]
       [%send 'poke' '/sys/ames/ships/' & (crip say-send)]
       [%read 'peek' '/sys/ames/ships/' & (crip say-read)]
@@ -2960,10 +2962,11 @@
     (pure:m ~)
   ;<  set=?  bind:m
     (soft-behn /rise/set [[/ %timer-set] `[wire @da]`[/rise until.plan]])
-  ::  no timer: a refused /sys/behn/, which +check-grant says at the
-  ::  writer's start; nothing more is said here, whatever crashed for it
+  ::  no timer: a refused /sys/behn/, which parks the fibers that use it
+  ::  and which the kernel says once; nothing more is said here
   ?.  set  (rise-park note)
-  ;<  ~  bind:m  ?.(crash (pure:m ~) (alarm up (cat 3 'crash-' kind) 2 (say-crash kind) u.prod))
+  ::  the trace is the kernel's: it prints %fiber-crash with it each time
+  ;<  ~  bind:m  ?.(crash (pure:m ~) (alarm up (cat 3 'crash-' kind) 2 (say-crash kind) ~))
   (rise-park note)
 ::  +take-kick: the start's kick, taken before anything is sent (rule 9
 ::  of the crash-loop rules). A reload or a restart queues a null kick

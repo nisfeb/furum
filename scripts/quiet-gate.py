@@ -10,8 +10,11 @@ on the reload, exactly one line on the refusal (kept at /tr/fault), and
 nothing more when the grant is whole again (the fault cleared). The first
 step, an upgrade from the last release, is a deploy: run it before this.
 
-A line is furum's when it contains %furum. The console is counted from a
-mark: what is on it when a step starts doesn't count, screen included.
+A line is said for furum when it contains %furum, or is the kernel's
+parked line for furum's app: a road whose refusal parks a fiber (timers,
+the bowl) is the kernel's to say, and the parked grub's bang its record.
+The console is counted from a mark: what is on it when a step starts
+doesn't count, screen included.
 
 Never point this at a real ship: it changes furum's grant.
 """
@@ -32,7 +35,7 @@ def call(path, body=None):
 def console():
     out = subprocess.run(['tmux', 'capture-pane', '-p', '-J', '-t', pane, '-S', '-'],
                          capture_output=True, text=True, check=True).stdout
-    return [l for l in out.split('\n') if '%furum' in l]
+    return [l for l in out.split('\n') if '%furum' in l or ('furum.furum_app is parked' in l)]
 
 def mark():
     subprocess.run(['tmux', 'clear-history', '-t', pane], check=True)
@@ -55,7 +58,9 @@ def step(what, act, said, kept, wait=90):
     act()
     time.sleep(wait)
     lines = console()[before:]
-    ok = len(lines) == said and faults() == kept
+    # a fault the kernel said is kept as its bang, not at /tr/fault
+    kernel = any('is parked' in l for l in lines)
+    ok = len(lines) == said and (faults() or kernel) == kept
     print(f'  {"ok  " if ok else "FAIL"}  {what}: {len(lines)} line(s), fault {"kept" if faults() else "none"}')
     for l in lines:
         print(f'          {l.strip()[:160]}')

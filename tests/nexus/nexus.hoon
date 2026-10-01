@@ -343,15 +343,19 @@
     ?:  =(r (rf 0 / %'grant.json'))  ?~(g [%none ~] [%file *cass:clay [[/ %json] %& !>(u.g)]])
     ?:  =(r (rf 0 /tr %fault))  (file [%1 kept])
     [%none ~]
-  =/  stale  (my ~[[%timer ['x' now now 1]] [%groups ['y' now now 1]]])
+  =/  stale  (my ~[[%inbox ['x' now now 1]] [%groups ['y' now now 1]]])
   ;:  weld
     ::  no grant yet: nothing
     (expect-eq !>(~) !>((fault-kinds (run ~ ~))))
-    ::  /sys/behn/ refused: that fault alone (/sys/ames/usergroups/ is
-    ::  only needed once a board is paid)
-    %+  expect-eq  !>(~[%timer])
+    ::  /sys/ames/registry refused: that fault alone (/sys/ames/usergroups/
+    ::  is only needed once a board is paid)
+    %+  expect-eq  !>(~[%inbox])
+      !>((fault-kinds (run `(grant (skip all |=(r=@t =(r '/sys/ames/registry'))) ~['/sys/ames/ships/']) ~)))
+    ::  /sys/behn/ refused: not furum's to say; the kernel parks the fiber
+    ::  that first sets a timer, and says so once
+    %+  expect-eq  !>(~)
       !>((fault-kinds (run `(grant (skip all |=(r=@t =(r '/sys/behn/'))) ~['/sys/ames/ships/']) ~)))
-    ::  everything granted again: the kept timer fault goes; the group
+    ::  everything granted again: the kept inbox fault goes; the group
     ::  fault stays until a grant names /sys/ames/usergroups/
     %+  expect-eq  !>(~[%groups])
       !>((fault-kinds (run `(grant all ~['/sys/ames/ships/']) stale)))

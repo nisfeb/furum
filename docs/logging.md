@@ -13,7 +13,6 @@ itself, is said again only when it comes back after two quiet hours.
 | kind | level | said when | the line ends with |
 |---|---|---|---|
 | `web` | `>>>` | the grant lacks `/sys/eyre/` | Allow furum /sys/eyre/ (may poke) |
-| `timer` | `>>>` | the grant lacks `/sys/behn/` | Allow furum /sys/behn/ (may poke) |
 | `inbox` | `>>>` | the grant lacks `/sys/ames/registry` | Allow furum /sys/ames/registry (may poke) |
 | `send` | `>>>` | the grant lacks `/sys/ames/ships/` to poke | Allow furum /sys/ames/ships/ (may poke) |
 | `read` | `>>>` | the grant lacks `/sys/ames/ships/` to read | Allow furum /sys/ames/ships/ (may read) |
@@ -21,7 +20,18 @@ itself, is said again only when it comes back after two quiet hours.
 | `iris` | `>>>` | a mint can't be reached, and the grant lacks `/sys/iris/` | Allow furum /sys/iris/ (may poke) |
 | `registry` | `>>>` | the registry setting names a ship that keeps no directory furum can read | Set the registry ship on furum's admin page: ~ship |
 | `payment` | `>>>` | a payment's record can't be read | Report it: /pay/id |
-| `crash-…` | `>>` | a fiber (writer, inbox, web, prune, sweep, directory, follower, payment, request) crashed; it retries by itself | If it keeps crashing, report it with this trace (the trace follows, the first time only) |
+| `crash-…` | `>>` | a fiber (writer, inbox, web, prune, sweep, directory, follower, payment, request) crashed; it retries by itself | If it keeps crashing, report it with the kernel's %fiber-crash trace before this line |
+
+Since grubbery 5ae72f0 (`dist/single-release`, 2026-10-01) the kernel says two things itself,
+and furum doesn't repeat them:
+
+- A road whose refusal parks a fiber: `>>> grubbery: <app> is parked: it may not <verb> <road>;
+  grant it at /apps/grubbery/permits, then reload`, once per app, with the parked grub's bang as
+  the record; the reload after an approval revives it. For furum these are `/sys/bowl.sig` and
+  `/sys/behn/`, which its fibers use for every clock read and timer. Furum says only refusals it
+  handles softly, which the kernel doesn't report.
+- A crash: `%fiber-crash <path>` and its trace, each time. Furum's crash line comes after it,
+  once per episode, without the trace.
 
 The permission faults are judged from the shell's grant (`grant.json`), read once at the
 writer's start (`+check-grant`): a road the grant lacks is said, and a road granted again
@@ -33,8 +43,7 @@ nothing.
 
 Not said, by design:
 
-- `/sys/bowl.sig` refused: nothing can be read, kept or timed without it, so furum stops; the
-  kernel's veto line names the road.
+- `/sys/bowl.sig` or `/sys/behn/` refused: the kernel's parked line says it (above).
 - `/sys/push/` and `/sys/scry/` refused: furum works without them, as their weir lines say.
 - Another ship refusing, or not answering: a host that has no such board, a registry that
   refuses, a mint or a peer offline. These are expected, and kept for the pages: the directory
@@ -77,24 +86,28 @@ and the unit suites print their faults' lines there when they run on the same sh
 
 1. Upgrade from the last release with real data in place. Furum prints nothing.
 2. Reload it (`POST /apps/grubbery/permits/reload {"app": …}`). Furum prints nothing.
-3. Approve its weir without one road it needs (say `/sys/ames/registry`), as the permissions
-   page does: `approve-weir` with the rest, then reload. Furum prints exactly one `>>>` line,
-   with the remedy, and `/tr/fault` keeps it.
-4. Approve the whole weir again. Furum prints nothing, and `/tr/fault` no longer has it.
+3. Approve its weir without one road it needs, as the permissions page does: `approve-weir`
+   with the rest, then reload. Exactly one `>>>` line is said, with the remedy: furum's, kept
+   at `/tr/fault` (say `/sys/ames/registry`), or the kernel's parked line, kept as the bang
+   (`/sys/behn/`).
+4. Approve the whole weir again. Nothing is said, the fault is cleared, and no grub is banged.
 
-Steps 2 to 4 are `scripts/quiet-gate.py <url> <jar> <tmux pane> [road]`. A line counts as
-furum's when it contains `%furum`. The kernel's own lines are in the register below.
+Steps 2 to 4 are `scripts/quiet-gate.py <url> <jar> <tmux pane> [road]`. A line counts when it
+contains `%furum` or is the kernel's parked line for furum. Other kernel lines are below.
 
 ## Known noise
 
-Lines the kernel prints that furum's work can bring about, and furum doesn't control. Report
-them upstream (grubbery), not as furum bugs.
+Lines that furum's work brings about and that furum doesn't print, as of grubbery 5ae72f0,
+checked on two fake ships. Report them upstream (grubbery), not as furum bugs.
 
 | line | prints on | brought about by |
 |---|---|---|
-| `>>> [%weir-veto-at boundary=/sys/ames/ships/~x …]` | a ship refusing another's read; `boundary` names the reader | another ship's follower reading a board this ship doesn't have, or content closed to it |
-| `>> [%veto-received-from ~x …]` | the reader of a refused read | the same, from the reader's side |
-| `>>> [%process-dart-vetoed …]` and `%weir-veto-at` naming furum's own path | a ship refusing furum a road | a road its grant lacks (the gate's step 3) |
-| `> compile …: took`, `> build-all: took`, `> reload-changed-nexuses: took` and the like | the ship furum is built on | every build and reload |
-| `>> [%desk-source-unreachable …]` | any ship whose desks follow an unreachable source | fake ships, which can't reach the publisher |
-| `>> [%sand-applying …]`, `> [%sand-applied …]` | the ship approving furum's weir | every approval |
+| `%fiber-crash <path> in=…` and its trace, no marker | the ship whose fiber crashed | every crash, each time; furum's own line says it once |
+| `>> [%veto-received-from ~x …]` | the reader of a read another ship refused | a board the host doesn't have (first contact), or content closed to the reader |
+| `>> [%miss-received-from ~x]` | the reader of a read whose answer expired | a slow remote read |
+| `> [%sand-applied …]` | the ship approving furum's weir | every approval: a notice |
+| `eyre: replacing existing binding at /apps/furum` | the ship furum runs on | every reload of furum (eyre, a vane) |
+| `>> [%desk-source-unreachable …]` | a ship whose desks follow a source it can't reach | fake ships, which can't reach the publisher; once per desk |
+
+Gone since 5ae72f0, behind the kernel's debug flag: `%weir-veto-at`, `%process-dart-vetoed`,
+`%sand-applying`, and the build and reload timings.
