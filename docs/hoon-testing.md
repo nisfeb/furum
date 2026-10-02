@@ -290,7 +290,7 @@ every host action and page, as owner and guest, with each refusal the
 routes promise, and the theme settings (111 checks), and deletes it
 again.
 `scripts/xship.py <url-a> <jar-a> <~a> <url-b> <jar-b> <~b>` runs two
-ships at each other, both ways (58 checks): the directory, following,
+ships at each other, both ways (60 checks): the directory (and the reader's copy of it once the registry is back where it was), following,
 posts, comments, replies, votes, moderation, notes, and a refusal told
 back. `scripts/access.py` (same arguments, host first) checks who may
 read a paid board (29 checks): the weir's grants, a stranger's paywall,

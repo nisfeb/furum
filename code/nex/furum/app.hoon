@@ -1613,7 +1613,16 @@
   =/  m  (fiber:fiber:nexus ,registry-store)
   ^-  form:m
   ;<  n=(unit *)  bind:m  (read-noun road)
-  (pure:m (fall (mole |.(+:;;([%1 registry-store] (need n)))) *registry-store))
+  (pure:m (fall (biff n store-of) *registry-store))
+::  +store-of: a directory as kept: the registry's own [%1 store], or a
+::  copy of it [%2 when store] (+read-registry)
+::
+++  store-of
+  |=  n=*
+  ^-  (unit registry-store)
+  =/  c  (mole |.(;;([%2 at=@da st=registry-store] n)))
+  ?^  c  `st.u.c
+  (bind (mole |.(;;([%1 st=registry-store] n))) |=([%1 st=registry-store] st))
 ::  +read-here: this install's own path, from the grant the shell wrote
 ::  on approval; the standard one before
 ::
@@ -1900,6 +1909,7 @@
   ;<  vw=(unit (unit view:nexus))  bind:m
     ((with-timeout:io (unit view:nexus)) /reg ~s30 (peek-soft:io [%& %& there %registry] ~))
   =/  why=(unit @t)  (dir-fault vw)
+  ;<  now=@da  bind:m  get-time:io
   ::  said once: a registry setting that names a ship with no directory.
   ::  Our own weir refusing is +check-grant's to say; no answer, the
   ::  registry's refusal and a lost answer are for the directory page
@@ -1909,8 +1919,7 @@
   ;<  ~  bind:m
     ?^  why  (pure:m ~)
     ?>  ?=([~ ~ %file *] vw)
-    (over:io (rf 0 / %directory) [[/ %noun] (sang-noun:tarball sang.u.u.vw)])
-  ;<  now=@da  bind:m  get-time:io
+    (keep-copy (need (store-of (sang-noun:tarball sang.u.u.vw))) now)
   ;<  ~  bind:m  (dir-trace ?~(why ~ `[registry.pf u.why now]))
   =/  wait=@dr  ?~(why ~h1 (min ~h1 (mul ~m1 (bex (min tries 6)))))
   =/  next=@ud  ?~(why 0 +(tries))
@@ -1919,6 +1928,22 @@
   ;<  ~  bind:m  (cancel-timer:io /rh)
   ?:  ?=(%again e)  (read-registry next)
   $(tries next)
+::  +keep-copy: this ship's copy of the registry's directory, written only
+::  when it changed, as [%2 when store]: never the noun that came from
+::  the registry. grubbery (5ae72f0) loses a write whose content, mark
+::  and all are the same as content this ship has already taken from
+::  another ship: it reports the write done, and the grub reads as none.
+::  So a copy made as it arrived went missing whenever the directory
+::  came back to a state seen before, and the directory page showed
+::  nothing. The time makes each copy new.
+::
+++  keep-copy
+  |=  [st=registry-store now=@da]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  ;<  n=(unit *)  bind:m  (read-noun (rf 0 / %directory))
+  ?:  =(`st (biff n store-of))  (pure:m ~)
+  (over:io (rf 0 / %directory) [[/ %noun] [%2 now st]])
 ::  +dir-fault: why a read of the registry's grub gave no directory, or ~
 ::  when it gave one: the registry did not answer in time; our own weir
 ::  refused the read (a veto intake, so peek-soft's ~); the registry's

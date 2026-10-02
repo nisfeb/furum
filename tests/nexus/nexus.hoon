@@ -418,7 +418,10 @@
     (expect-eq !>(~) !>((made-files (new w gone))))
   ==
 ::
-::  the directory reader: a read of the registry that fails says why at
+::  the directory reader: its copy is kept as [%2 when store], never the
+::  noun the registry sent (grubbery loses a write identical to content
+::  taken from another ship), and only when it changed. A read of the
+::  registry that fails says why at
 ::  /tr/dir (no answer; our own weir refusing, a veto; the registry's
 ::  refusing, a %veto view) and is tried again in a minute, then two, not
 ::  an hour on; a read that works keeps the directory, clears the
@@ -446,7 +449,14 @@
   ::  it reads, after a failure was traced
   =/  was  [%1 `[~ricsul-bilwyt 'it did not answer in time' now]]
   =/  ok  (answer-peek:ft a-world:ft up (file [%1 *registry-store]))
-  =/  ok  (serve 3 ok |=(r=road:tarball ?:(=(r (rf 0 /tr %dir)) (file was) [%none ~])))
+  =/  ok  (serve 5 ok |=(r=road:tarball ?:(=(r (rf 0 /tr %dir)) (file was) [%none ~])))
+  ::  it reads the same directory as the copy already holds: no write
+  =/  same  (answer-peek:ft a-world:ft up (file [%1 *registry-store]))
+  =/  same
+    %^  serve  5  same
+    |=  r=road:tarball
+    ?:  =(r (rf 0 / %directory))  (file [%2 ~2025.1.1 *registry-store])
+    [%none ~]
   ;:  weld
     (expect-eq !>(`(list [road:tarball *])`~[[(rf 0 /tr %dir) was]]) !>((made-files late)))
     ::  no answer is kept for the page, and said nowhere
@@ -462,8 +472,9 @@
     !>((dir-files theirs))
     (expect-eq !>(~) !>((fault-kinds theirs)))
     %+  expect-eq
-      !>  ^-  (list [road:tarball *])  ~[[(rf 0 / %directory) [%1 *registry-store]] [(rf 0 /tr %dir) [%1 ~]]]
+      !>  ^-  (list [road:tarball *])  ~[[(rf 0 / %directory) [%2 now *registry-store]] [(rf 0 /tr %dir) [%1 ~]]]
     !>((dir-files ok))
+    (expect-eq !>(`(list [road:tarball *])`~) !>((dir-files same)))
     (expect-eq !>([/rh (add now ~h1)]) !>((rear (timers ok))))
   ==
 ::

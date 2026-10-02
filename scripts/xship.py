@@ -11,7 +11,7 @@ other is checked from both sides. The boards are deleted at the end. Exit
 0 when every check passes, 1 when one fails. The jars come from
 hoon-test-kit/ship-cookie.sh. Never point this at a real ship.
 """
-import sys, time, urllib.error, urllib.parse, urllib.request
+import re, sys, time, urllib.error, urllib.parse, urllib.request
 
 ua, ja, sa, ub, jb, sb = sys.argv[1:7]
 t = int(time.time())
@@ -113,5 +113,13 @@ print('the hosts delete their boards')
 did(f'{A.name} deletes {ba}', A, f'{pa}/mod/delete')
 did(f'{B.name} deletes {bb}', B, f'{pb}/mod/delete')
 shows(f'{A.name}\'s directory lets both go', A, '?view=directory', lacks=(f'Board A {t}', f'Board B {t}'))
+# the registry is now as it was before the run: B's copy must still hold
+# what A lists (grubbery loses a copy written identical to content it has
+# already taken from another ship; furum keeps its copy in its own form)
+listed = lambda ship: set(re.findall(r'href="(/apps/furum/b/~[a-z-]+/[a-z0-9-]+)"', ship.get('?view=directory')[1]))
+end = time.time() + 30
+while listed(B) != listed(A) and time.time() < end: time.sleep(1)
+ok(f'{B.name}\'s directory is {A.name}\'s again ({len(listed(A))} boards)', listed(B) == listed(A),
+   f'{A.name} lists {len(listed(A))}, {B.name} {len(listed(B))}')
 print('0 failed' if not fails else f'{fails} FAILED')
 sys.exit(1 if fails else 0)
