@@ -2439,6 +2439,16 @@
     =*  info  info.u.p.b
     ;<  *  bind:m  (register c [%register name title.info description.info])
     (redirect id.c "{base}/mod?saved=registered")
+  ::  a new title or description goes to the directory too, as the
+  ::  board now holds it (every board is registered when it is made)
+  ?:  ?=([%mod %edit-info ~] rest)
+    ;<  res=(unit deny)  bind:m  (ask [%act our.c %edit-board-info name (f 'title') (f 'description')])
+    ?^  res  (err c code.u.res (trip why.u.res))
+    ;<  b=(each (unit board) @t)  bind:m  (read-board our.c name)
+    ;<  *  bind:m
+      ?.  ?=([%& ~ *] b)  (pure:(fiber:fiber:nexus ,(unit deny)) ~)
+      (register c [%register name title.info.u.p.b description.info.u.p.b])
+    (redirect id.c "{base}/mod")
   ?:  ?=([%mod %delete ~] rest)
     ;<  res=(unit deny)  bind:m  (ask [%act our.c %delete-board name])
     ?^  res  (err c code.u.res (trip why.u.res))
@@ -2465,7 +2475,6 @@
   ?+    rest  |+[404 "not found"]
       [%submit ~]   &+[[%new-post name (f 'title') (txt 'url') (txt 'body')] base]
       [%sidebar ~]  &+[[%set-sidebar name (f 'sidebar')] "{base}/mod"]
-      [%mod %edit-info ~]  &+[[%edit-board-info name (f 'title') (f 'description')] "{base}/mod"]
   ::
       [%vote ~]
     ?~  t=(parse-vote-target:fl (f 'target'))  |+[400 "invalid vote target"]

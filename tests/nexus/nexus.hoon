@@ -322,6 +322,37 @@
     (expect-eq !>(`(list *)`~[[%gone ~nec %b]]) !>((gone let)))
   ==
 ::
+::  a host's new title and description reach the directory: the edit is
+::  asked of the writer, then the board as it now stands is registered
+::  with the registry (here the default, ~ricsul-bilwyt)
+::
+++  test-edit-registers
+  =/  w  =/(w a-world:ft w(refuse ~[/sys/scry]))
+  =/  brd=board
+    =|  b=board
+    b(name.info %b, host.info ~zod, title.info 'New', description.info 'd2')
+  =/  read
+    |=  r=road:tarball
+    ^-  view:nexus
+    ?:  =(r (rv 1 /boards/b))  [%ball *wave:nexus (as-ball (grubs:fb brd))]
+    [%none ~]
+  =/  t
+    %:  run:ft  w
+      ((on-file:app [/requests %r1] *blot:tarball) ~)
+      (request:ft ~zod & %'POST' '/apps/furum/b/~zod/b/mod/edit-info' 'title=New&description=d2')
+    ==
+  ::  up to the ask, then its answer, then the board and the registry
+  =/  t  (serve-in w 6 t read)
+  =/  asked  (turn (pokes:ft t [/furum %ask]) tail)
+  =/  t  (serve-in w 8 (feed:ft w t (poke *from:fiber:nexus [[/furum %done] !>(`(unit deny)`~)])) read)
+  ;:  weld
+    %+  expect-eq  !>(`(list *)`~[[%act ~zod %edit-board-info %b 'New' 'd2']])
+      !>(asked)
+    %+  expect-eq
+      !>  `(list *)`~[[%reg /apps/'shell.shell'/desks/'furum.desk'/desk/data/'furum.furum_app' %register %b 'New' 'd2']]
+    !>((turn (pokes:ft t [/furum %msg]) tail))
+  ==
+::
 ::  the writer's start reads the shell's grant: a road furum can't do
 ::  without that isn't granted is kept as a fault (and said); a road only
 ::  needed in use isn't; a grant with everything clears what was kept;

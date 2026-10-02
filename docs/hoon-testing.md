@@ -164,7 +164,7 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh <pier>
 ```
 
-`tests/nexus/` holds seven suites, 111 tests:
+`tests/nexus/` holds seven suites, 112 tests:
 
 | suite | tests | what it owns |
 |---|---|---|
@@ -174,7 +174,7 @@ HOON_TEST_CONF=hoon-test-nexus.conf VERE=... scripts/hoon-test-kit/hoon-test.sh 
 | `furum-board` | 9 | a board in the ball, and who hears of an action (below) |
 | `furum-registry` | 2 | the directory's rules: first registrant, curation, admins |
 | `furum-theme` | 10 | the theme: colours derived as talon derives them, an accent, what a page draws with, talon's settings read as talon writes them |
-| `nexus` | 48 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
+| `nexus` | 49 | the fibers, driven through `+on-file` with the kit's `fiber-test` (below) |
 
 The Gall desk's libs were copied to `code/lib` with grubbery imports
 (`/<`), and `sur/furum.hoon` became `lib/furum-types.hoon`. `desk/` is
@@ -227,6 +227,7 @@ fiber sends next is answered as if nothing were refused.
 | `test-give-up` | the writer, told a board is gone, notes when under `/gone` and culls its follower |
 | `test-gone-board-page` | a board its host just said it lacks answers 404 "has no board named"; a minute on, the page asks again |
 | `test-directory-retries` | a registry read that fails notes why at `/tr/dir` (no answer, our weir's veto, the registry's `%veto` view) and retries in a minute, then two; one that works keeps the directory, clears the note, and waits the hour |
+| `test-edit-registers` | a host's new title and description are asked of the writer, then the board as it now stands is registered, so the directory shows them |
 | `test-registry-writer` | a ship that doesn't keep the registry refuses registry actions; one that does keeps the entry and the host's install path |
 | `test-public-grant-set` | at a rise every ship may read each board's `pub/` and a free board's `content/`, never a paid one's; only the paid board gets a group |
 | `test-public-grant-resent` | a board made, or given a price, resends the public grant; giving access doesn't |
