@@ -1,29 +1,23 @@
-<!-- the furum logo: a forum is where people gather to talk, so a Roman
-     portico whose roof is a speech bubble, its tail over the middle
-     column, in the shared palette of sneagan's apps (lattice, auspex,
-     orrery, talon): amber (#f9a804) on deep navy (#101541, vignetting to
-     #080b25), with lattice's stroke weight and round caps. Square and
-     full-bleed: the tile does its own rounding. This file is the single
-     source: the tile's icon.svg and the favicon are this file, and
-     lib/furum.hoon's +furum-icon-png is it rendered at 512 px
-     (rsvg-convert -w 512 -h 512). -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="50%" r="72%">
-      <stop offset="0" stop-color="#171c52"/>
-      <stop offset="0.6" stop-color="#101541"/>
-      <stop offset="1" stop-color="#080b25"/>
-    </radialGradient>
-  </defs>
-  <rect width="512" height="512" fill="url(#bg)"/>
+<!-- the furum logo: a forum is where people gather to talk, so a
+     Roman portico whose roof is a speech bubble, its tail over the middle
+     column. lib/furum.hoon's +furum-icon-png is it full-bleed at 512 px
+     (navy to the edge, the mark at 64%), as iOS fills a transparent
+     corner black.
+     Drawn the way Talon's icon is (talon scripts/make-icons.py, 2026-10-01):
+     the mark centred by its drawn bounds, its longer side 62% of the
+     canvas, on a rounded square of Talon's navy (#1E1B4B; 920 px with a
+     52 px margin, radius 200), in the family amber (#f9a804). The
+     launcher tile rounds itself and its colour is the same navy, so
+     there the margin is the tile. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect x="52" y="52" width="920" height="920" rx="200" fill="#1E1B4B"/>
+  <g transform="translate(-12.29 -4.10) scale(2.0480)">
   <g fill="none" stroke="#f9a804" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
-    <!-- the roof: a speech bubble, its tail pointing down into the forum -->
     <path d="M154 108 H358 Q 400 108 400 150 V160 Q 400 202 358 202 H282 L256 234 L230 202 H154 Q 112 202 112 160 V150 Q 112 108 154 108 Z"/>
-    <!-- three columns, the middle one under the tail -->
     <path d="M160 258 V350"/>
     <path d="M256 270 V350"/>
     <path d="M352 258 V350"/>
-    <!-- the step it stands on -->
     <path d="M124 396 H388"/>
+  </g>
   </g>
 </svg>

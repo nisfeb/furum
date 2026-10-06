@@ -61,7 +61,7 @@
         %-  pairs:enjs:format
         :~  title+s+'Furum'
             info+s+'Decentralized forums for Urbit'
-            color+s+'#101541'
+            color+s+'#1E1B4B'
             image+s+'/grubbery/tiles/icon/furum'
             href+s+'/apps/furum'
         ==
