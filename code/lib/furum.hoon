@@ -5,7 +5,7 @@
 /<  th  /lib/furum-theme.hoon
 |%
 ::  the release, as in code/version.json; the page footer shows it
-++  version  '9'
+++  version  '10'
 ::
 ::  the app icon (nex/furum/icon.svg) as a 512 px PNG, base64
 ::
@@ -3020,7 +3020,7 @@
         ==
         ;h4: Making a copy
         ;p: Download every board you host as one tar file:
-        ;a(href "/grubbery/ball/apps/shell.shell/desks/furum.desk/desk/data/furum.furum_app/boards?download=tar"): download your boards
+        ;a(href "/grubbery/api/peek/apps/shell/desks/furum.desk/desk/data/furum.furum_app/boards/?as=tar"): download your boards
         ;p: Keep pier-level snapshots as a second layer of protection (e.g. GroundSeg daily snapshots).
         ;hr;
         ;h3: Tips

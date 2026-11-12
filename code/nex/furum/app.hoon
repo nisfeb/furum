@@ -28,6 +28,7 @@
 ::    /registry            the directory, on the ship that keeps it (public)
 ::    /directory           this ship's copy of it
 ::    /grant.json          the shell's record of our grant, with our own path
+::    /groups.json         the roads we open to each usergroup (+put-group)
 ::    /tr/last  /tr/inbox  the writer's last refusal; what other ships poked
 ::    /tr/dir              why the registry's directory last failed to read
 ::    /tr/fault            each fault a person should act on, said once (+alarm)
@@ -96,6 +97,8 @@
           [%fall %& [/ %registry] [[/ %noun] [%1 *registry-store]]]
           [%fall %& [/ %directory] [[/ %noun] [%1 *registry-store]]]
           [%stay %& [/ %'grant.json']]
+          ::  the roads +put-group names for the shell
+          [%stay %& [/ %'groups.json']]
           [%fall %& [/ %seen] [[/ %noun] [%1 ~ ~]]]
           [%fall %& [/ %limits] [[/ %noun] [%1 ~]]]
           [%fall %| /tr empty-dir:loader]
@@ -113,10 +116,9 @@
       =/  m  (fiber:fiber:nexus ,~)
       ^-  process:fiber:nexus
       ?+    rail  stay:m
-          ::  the writer. It opens the inbox to other ships at every rise:
-          ::  the registry takes a grant only from the fiber it registered,
-          ::  and drops it when that fiber dies (phase 0, spike B). An ask
-          ::  is answered once it is applied, refused or not
+          ::  the writer. It names the inbox and the boards in
+          ::  groups.json at every rise (+grant-public). An ask is
+          ::  answered once it is applied, refused or not
           [~ %'main.sig']
         ;<  ~  bind:m  (rise-later 0 prod %writer "%furum writer: failed")
         ::  jailed (no clock yet), the approval reload does this
@@ -199,7 +201,9 @@
 ::
 ++  rf  |=([up=@ud p=path n=@ta] ^-(road:tarball [%| up [%& p n]]))
 ++  rv  |=([up=@ud p=path] ^-(road:tarball [%| up [%| p]]))
-++  srv  ~(. http-res:io [%| 1 %& ~ %'web.sig'])
+::  develop's http-res is a core, the dist kernel's a door whose road is
+::  unused: taken bare, it builds on both (version 10)
+++  srv  http-res:io
 ::  +op: what the writer takes, as a noun under [/furum %op] or, to be
 ::  answered, [/furum %ask]; clammed under mule, so a malformed one is
 ::  refused and never a crash
@@ -267,24 +271,55 @@
   ==
 ::  +grant-public: open the inbox to every ship, and let every ship read
 ::  the registry (empty but where we keep it), each board's pub/, and a
-::  free board's content/. The set is complete each time: the registry
-::  replaces what we granted before. Sent by the writer
-::  itself: the registry keys a grant to the rail that registered, and
-::  drops a %how from any other fiber without a word. A refused road is
-::  kept at /tr/fault and said once (+alarm), and the boards stay local.
+::  free board's content/. The set is complete each time: it replaces
+::  what we named before (+put-group). Sent by the writer.
 ::
 ++  grant-public
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
-  ;<  reg=(unit tang)  bind:m  (reg-register-at-soft:io [/ %'main.sig'])
-  ?^  reg  (alarm-ungranted 0 %inbox 'poke' '/sys/ames/registry' say-inbox)
   ;<  names=(list @ta)  bind:m  (board-names 0)
   ;<  open=(list road:tarball)  bind:m  (public-roads names)
-  ;<  how=(unit tang)  bind:m
-    %+  reg-how-soft:io  /public
-    [~ (sy ~[(rf 0 / %'inbox.sig')]) (silt [(rf 0 / %registry) open])]
-  ?~  how  (pure:m ~)
-  (alarm-ungranted 0 %inbox 'poke' '/sys/ames/registry' say-inbox)
+  %+  put-group  /public
+  [~ (sy ~[(rf 0 / %'inbox.sig')]) (silt [(rf 0 / %registry) open])]
+::  +put-group: a usergroup's roads, develop's way (version 10): its
+::  entry in the groups.json at our root replaced, the other groups
+::  kept. The shell derives the group from it once the owner grants it
+::  on Permits. It is the entry our dist kernel's reg-how compat wrote,
+::  so one source runs on both: each road relative to our root, a file
+::  as /sub/file, a directory as /sub/, the root as /. Every road is
+::  [%| 0 lane]: only the writer, at our root, calls this.
+::
+++  put-group
+  |=  [grp=path =weir:nexus]
+  =/  m  (fiber:fiber:nexus ,~)
+  ^-  form:m
+  =/  arr
+    |=  roads=(set road:tarball)
+    ^-  json
+    :-  %a
+    %+  turn  ~(tap in roads)
+    |=  =road:tarball
+    ^-  json
+    ?>  ?=([%| %0 *] road)
+    :-  %s
+    ?-  -.q.p.road
+      %&  (spat (snoc path.p.q.p.road name.p.q.p.road))
+      %|  ?~(p.q.p.road '/' (cat 3 (spat p.q.p.road) '/'))
+    ==
+  =/  at=road:tarball  (rf 0 / %'groups.json')
+  ;<  cur=json  bind:m  (read-json at)
+  =/  obj=(map @t json)  ?.(?=([%o *] cur) ~ p.cur)
+  =/  new=json
+    :-  %o
+    %+  ~(put by obj)  (spat grp)
+    %-  pairs:enjs:format
+    :~  ['make' (arr make.weir)]
+        ['poke' (arr poke.weir)]
+        ['peek' (arr peek.weir)]
+    ==
+  ?:  =(new cur)  (pure:m ~)
+  ;<  *  bind:m  (over-as-soft:io at [[/ %json] new] [/ %json])
+  (pure:m ~)
 ::  ==  the writer
 ::
 ::  +apply: one op from a poke, answered with why it was refused, or ~.
@@ -1282,9 +1317,8 @@
   ?:  =(old paid.u.new)  (pure:m ~)
   (over:io (rf 0 /members name) [[/ %noun] [%1 paid.u.new]])
 ::  +set-group: a paid board's usergroup: its ships written, then its
-::  weir sent through the registry, which recomputes every peer's weir
-::  at once (a written group waits for each peer's next contact). A ship
-::  that refused the usergroup road keeps paid boards closed.
+::  roads named in groups.json (+put-group). A ship that refused the
+::  usergroup road keeps paid boards closed.
 ::
 ++  grp  |=(name=@ta ^-(@ta (crip "furum-{(trip name)}")))
 ++  grp-dir  |=(name=@ta ^-(path /sys/ames/usergroups/(crip "{(trip (grp name))}.grp")))
@@ -1297,10 +1331,7 @@
   ;<  *  bind:m  (write-soft [%& %| gdir] &+empty-dir:loader |)
   ;<  ok=?  bind:m  (write-soft [%& %& gdir %'who.ships'] |+[[[/ %ships] ships] ~] &)
   ?.  ok  (alarm-ungranted 0 %groups 'make' '/sys/ames/usergroups/' say-groups)
-  ;<  how=(unit tang)  bind:m
-    (reg-how-soft:io /[(grp name)] [~ ~ (sy ~[(rv 0 /boards/[name]/content)])])
-  ?~  how  (pure:m ~)
-  (alarm-ungranted 0 %groups 'poke' '/sys/ames/registry' say-groups)
+  (put-group /[(grp name)] [~ ~ (sy ~[(rv 0 /boards/[name]/content)])])
 ::  +drop-group: a board no longer paid, or gone: its grant taken back,
 ::  then its group
 ::
@@ -1308,7 +1339,7 @@
   |=  name=@ta
   =/  m  (fiber:fiber:nexus ,~)
   ^-  form:m
-  ;<  *  bind:m  (reg-how-soft:io /[(grp name)] [~ ~ ~])
+  ;<  ~  bind:m  (put-group /[(grp name)] [~ ~ ~])
   ;<  *  bind:m  (cull-soft:io [%& %| (grp-dir name)])
   (pure:m ~)
 ::  +write-soft: a make that answers | when refused, where make-soft:io
@@ -1581,7 +1612,7 @@
 ::
 ::  where furum is installed when nothing says otherwise: a desk install
 ::
-++  standard-install  `path`/apps/'shell.shell'/desks/'furum.desk'/desk/data/'furum.furum_app'
+++  standard-install  `path`/apps/shell/desks/'furum.desk'/desk/data/'furum.furum_app'
 ::  +remote: a path under another ship's furum
 ::
 ++  remote
