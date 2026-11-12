@@ -60,7 +60,7 @@
       =/  tile=json
         %-  pairs:enjs:format
         :~  title+s+'Furum'
-            info+s+'Decentralized forums for Urbit'
+            info+s+'Discontinued: you can uninstall it'
             color+s+'#101541'
             image+s+'/grubbery/tiles/icon/furum'
             href+s+'/apps/furum'
@@ -164,17 +164,17 @@
         ;<  ~  bind:m  (rise-later 0 prod %sweep "%furum sweep: failed")
         ;<  *  bind:m  (keep-soft:io /s (rf 0 / %sweep) ~ ~s30)
         sweeper
-          ::  this ship's copy of the registry's directory
+          ::  this ship's copy of the registry's directory. Furum is
+          ::  discontinued (version 9): the directory is no longer read,
+          ::  so nothing asks the registry ship again. The copy it holds
+          ::  stays as it is.
           [~ %'dir.sig']
-        ;<  ~  bind:m  (rise-later 0 prod %directory "%furum directory: failed")
-        (read-registry 0)
-          ::  a follower: the mirror of one board on another ship
+        (pure:m ~)
+          ::  a follower: the mirror of one board on another ship. Furum
+          ::  is discontinued (version 9): no board is followed any more,
+          ::  so no host is asked again. The mirrors stay as they are.
           [[%follows @ ~] @]
-        ;<  ~  bind:m  (rise-later 2 prod %follower "%furum follower {(trip i.t.path.rail)}/{(trip name.rail)}: failed")
-        ;<  our=@p  bind:m  get-our:io
-        =/  host=(unit @p)  (slaw %p i.t.path.rail)
-        ?:  |(?=(~ host) =(`our host))  (pure:m ~)
-        (follow u.host name.rail 0)
+        (pure:m ~)
           ::  one message to another ship. One that crashed is dropped:
           ::  sent again it could arrive twice
           [[%outbox ~] @]
