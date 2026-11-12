@@ -148,7 +148,7 @@
           [~ %'web.sig']
         ;<  ~  bind:m  (rise-later 0 prod %web "%furum web: failed")
         ;<  ~  bind:m  (bind-http-self:io [~ /apps/furum])
-        (http-dispatch:io %furum)
+        http-dispatch:io
           ::  auto-prune: at each slot of the 6-hour grid, the writer
           ::  prunes every board that asks for it
           [~ %'prune.sig']
